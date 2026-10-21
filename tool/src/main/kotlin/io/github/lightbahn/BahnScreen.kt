@@ -203,11 +203,6 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
             showBack = false,
             rightButton = LightBarButton.LightIcon(LightIcons.SETTINGS, onClick = viewModel::openSettings),
             message = state.message,
-            bottomItems = listOf(
-                LightBarButton.Text("TAUSCHEN", onClick = viewModel::swap),
-                LightBarButton.Text("SUCHEN", onClick = viewModel::search),
-                LightBarButton.Text("TICKETS", onClick = viewModel::openTickets),
-            ),
         ) {
             LightTextField(
                 label = "Von",
@@ -222,23 +217,23 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                 onClick = { viewModel.edit(Field.TO) },
                 modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
             )
-            LightTextField(
-                label = "Abfahrt",
-                value = describeDeparture(state.departure),
-                placeholder = "Jetzt",
-                onClick = { viewModel.edit(Field.TIME) },
-                modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
-            )
             ActionLink(
-                text = "Verbindungen suchen →",
+                text = "Suchen",
                 enabled = state.from != null && state.to != null,
                 onClick = viewModel::search,
                 modifier = Modifier.padding(top = 3f.gridUnitsAsDp()),
             )
             ActionLink(
-                text = "Fahrkarten →",
+                text = "Tickets",
                 onClick = viewModel::openTickets,
                 modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
+            )
+            LightTextField(
+                label = "Abfahrt",
+                value = describeDeparture(state.departure),
+                placeholder = "Jetzt",
+                onClick = { viewModel.edit(Field.TIME) },
+                modifier = Modifier.padding(top = 4f.gridUnitsAsDp()),
             )
             if (state.departure != null) {
                 LightText(
@@ -313,7 +308,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         Page(
             title = journey.durationText().ifBlank { "Verbindung" },
             message = message,
-            bottomItems = listOf(LightBarButton.Text("FAHRKARTE", onClick = { viewModel.openTicketFor(journey) })),
+            bottomItems = listOf(LightBarButton.Text("TICKET", onClick = { viewModel.openTicketFor(journey) })),
         ) {
             journey.legs.forEach { leg ->
                 if (leg.walking) {
@@ -412,7 +407,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         val entry = mode.entry
         val bottom = buildList<LightBarButton?> {
             if (entry.files.size > 1) {
-                add(LightBarButton.Text("NÄCHSTES PDF", onClick = {
+                add(LightBarButton.Text("WEITER", onClick = {
                     viewModel.back()
                     viewModel.openTicket(entry, (mode.fileIndex + 1) % entry.files.size)
                 }))
@@ -483,7 +478,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
             message = state.message,
             bottomItems = listOf(
                 LightBarButton.Text("TESTEN", onClick = viewModel::testLogin),
-                LightBarButton.Text("VERGESSEN", onClick = viewModel::forgetMailAccess),
+                LightBarButton.Text("LÖSCHEN", onClick = viewModel::forgetMailAccess),
             ),
         ) {
             LightTextField(
