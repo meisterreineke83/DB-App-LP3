@@ -639,7 +639,7 @@ private fun ticketDetailLine(entry: TicketEntry): String {
     val parts = buildList {
         if (day != null) {
             add(formatTravelDay(day))
-            entry.departureTime?.let { add("ab $it") }
+            entry.departureTime?.let { dep -> add(entry.arrivalTime?.let { "$dep – $it" } ?: "ab $dep") }
         } else {
             add("Mail vom " + mailDate(entry.date))
         }

@@ -6,6 +6,7 @@ import java.time.LocalDate
 internal data class TicketInfo(
     val date: LocalDate? = null,
     val time: String? = null,
+    val arrival: String? = null,
     val from: String? = null,
     val to: String? = null,
 )
@@ -45,6 +46,7 @@ internal object TicketInfoParser {
         return TicketInfo(
             date = date,
             time = leg?.time,
+            arrival = leg?.arrival,
             from = route?.first?.let(::cleanStation),
             to = route?.second?.let(::cleanStation),
         )
@@ -52,8 +54,8 @@ internal object TicketInfoParser {
 
     private fun normalize(t: String) = t
         .replace(' ', ' ')
-        .replace(Regex("[ \\t]+"), " ")
-        .replace(Regex(" *\\r?\\n *"), "\n")
+        .replace(Regex(" +"), " ")
+        .replace(Regex("[ \\t]*\\r?\\n[ \\t]*"), "\n")
 
     // ---------------------------------------------------------------- Datum
 
@@ -95,7 +97,7 @@ internal object TicketInfoParser {
 
     // ---------------------------------------------------------------- Bahnhöfe
 
-    private class Leg(val from: String, val to: String, val time: String?, val date: Pair<Int, Int>?)
+    private class Leg(val from: String, val to: String, val time: String?, val arrival: String?, val date: Pair<Int, Int>?)
 
     /**
      * Fahrplantabelle der Fahrkarte:
@@ -108,7 +110,7 @@ internal object TicketInfoParser {
             """(?m)^(.{2,60}?)\s+(?:(?:Mo|Di|Mi|Do|Fr|Sa|So)\.?,?\s+)?(?:(\d{1,2})\.(\d{1,2})\.(?:20\d{2})?\s+)?(ab|an)\s+(\d{1,2}:\d{2})""",
         )
         val rows = row.findAll(text).mapNotNull { m ->
-            val station = m.groupValues[1].trim()
+            val station = m.groupValues[1].trim().substringAfterLast('\t').trim()
             if (!looksLikeStation(station)) return@mapNotNull null
             val dm = m.groupValues[2].toIntOrNull()?.let { d -> m.groupValues[3].toIntOrNull()?.let { d to it } }
             Triple(station, m.groupValues[4], m.groupValues[5]) to dm
@@ -116,7 +118,7 @@ internal object TicketInfoParser {
         val first = rows.firstOrNull { it.first.second == "ab" } ?: return null
         val last = rows.lastOrNull { it.first.second == "an" } ?: return null
         if (first.first.first.equals(last.first.first, ignoreCase = true)) return null
-        return Leg(first.first.first, last.first.first, first.first.third, first.second)
+        return Leg(first.first.first, last.first.first, first.first.third, last.first.third, first.second)
     }
 
     /** "Von Rheinfelden(Baden) nach Freiburg(Breisgau) Hbf" (auch über zwei Zeilen). */
