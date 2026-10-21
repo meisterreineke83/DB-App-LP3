@@ -451,6 +451,8 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
 
     @Composable
     private fun SettingsContent(state: BahnUiState) {
+        val mail = state.mail
+        val gap = Modifier.padding(top = 2f.gridUnitsAsDp())
         Page(
             title = "Postfach",
             message = state.message,
@@ -461,7 +463,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         ) {
             LightTextField(
                 label = "Ticket-Mailadresse",
-                value = state.email,
+                value = mail.email,
                 placeholder = "tickets@web.de",
                 onClick = { viewModel.edit(Field.EMAIL) },
             )
@@ -470,15 +472,67 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                 value = if (state.hasPassword) "••••••••" else "",
                 placeholder = "eintragen",
                 onClick = { viewModel.edit(Field.PASSWORD) },
-                modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
+                modifier = gap,
             )
+
             LightText(
-                text = "Nutze eine eigene Adresse nur für Bahn-Tickets und trage sie bei " +
-                    "bahn.de als E-Mail-Adresse ein. So sieht das Tool nie dein normales Postfach.\n\n" +
-                    "Beim Anbieter den IMAP-Zugriff einschalten (web.de/GMX: Einstellungen → " +
-                    "POP3/IMAP). Mit Zwei-Faktor-Anmeldung ein App-Passwort anlegen und hier " +
-                    "eintragen.\n\nDas Tool liest nur, sucht ausschließlich Mails von bahn.de und " +
-                    "speichert deren PDF-Fahrkarten auf dem Telefon. Das Passwort liegt verschlüsselt.",
+                text = "Posteingangs-Server",
+                variant = LightTextVariant.Subheading,
+                modifier = Modifier.padding(top = 3f.gridUnitsAsDp()),
+            )
+            LightTextField(
+                label = "Protokoll (tippen zum Wechseln)",
+                value = mail.protocol.label,
+                placeholder = "IMAP",
+                onClick = viewModel::toggleProtocol,
+                modifier = gap,
+            )
+            LightTextField(
+                label = "Server",
+                value = mail.host,
+                placeholder = mail.effectiveHost.ifEmpty { "automatisch" }.let { "automatisch: $it" },
+                onClick = { viewModel.edit(Field.SERVER) },
+                modifier = gap,
+            )
+            LightTextField(
+                label = "Port",
+                value = mail.port?.toString().orEmpty(),
+                placeholder = "automatisch: ${mail.effectivePort}",
+                onClick = { viewModel.edit(Field.PORT) },
+                modifier = gap,
+            )
+            LightTextField(
+                label = "Verschlüsselung (tippen zum Wechseln)",
+                value = mail.security.label,
+                placeholder = "SSL/TLS",
+                onClick = viewModel::toggleSecurity,
+                modifier = gap,
+            )
+            if (mail.protocol == MailProtocol.IMAP) {
+                LightTextField(
+                    label = "Ordner",
+                    value = mail.folder,
+                    placeholder = "INBOX (Posteingang)",
+                    onClick = { viewModel.edit(Field.FOLDER) },
+                    modifier = gap,
+                )
+            }
+
+            LightText(
+                text = buildString {
+                    append("Nutze eine eigene Adresse nur für Bahn-Tickets und trage sie bei bahn.de ein. ")
+                    append("So sieht das Tool nie dein normales Postfach.\n\n")
+                    append("Server und Port findest du auf der Hilfeseite deines Anbieters unter ")
+                    append("„IMAP“ oder „POP3“. SMTP brauchst du nicht – das ist nur zum Senden. ")
+                    append("Bei IMAP und POP3 muss der Zugriff beim Anbieter oft erst eingeschaltet werden ")
+                    append("(web.de/GMX: Einstellungen → POP3/IMAP).\n\n")
+                    if (mail.protocol == MailProtocol.POP3) {
+                        append("POP3: Das Tool löscht nichts. Manche Anbieter haben aber eine eigene Einstellung ")
+                        append("„Mails nach Abruf löschen“ – die sollte aus sein. IMAP ist meist die bessere Wahl.\n\n")
+                    }
+                    append("Das Tool liest nur, lädt ausschließlich Mails von bahn.de und speichert deren ")
+                    append("PDF-Fahrkarten auf dem Telefon. Das Passwort liegt verschlüsselt.")
+                },
                 variant = LightTextVariant.Detail,
                 lighten = true,
                 modifier = Modifier.padding(top = 3f.gridUnitsAsDp(), bottom = 2f.gridUnitsAsDp()),

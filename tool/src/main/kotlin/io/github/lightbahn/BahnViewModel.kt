@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.ZonedDateTime
 
-enum class Field { FROM, TO, TIME, EMAIL, PASSWORD }
+enum class Field { FROM, TO, TIME, EMAIL, PASSWORD, SERVER, PORT, FOLDER }
 
 sealed interface Mode {
     data object Home : Mode
@@ -41,11 +41,12 @@ data class BahnUiState(
     val laterRef: String? = null,
     val loadingMore: Boolean = false,
     val tickets: List<TicketEntry> = emptyList(),
-    val email: String = "",
+    val mail: MailSettings = MailSettings(),
     val hasPassword: Boolean = false,
     val editSession: Int = 0,
 ) {
     val mode: Mode get() = stack.last()
+    val email: String get() = mail.email
 }
 
 private object Keys {
@@ -55,7 +56,21 @@ private object Keys {
     val TO_NAME = stringPreferencesKey("to_name_v2")
     val EMAIL = stringPreferencesKey("imap_email")
     val PASSWORD = stringPreferencesKey("imap_password_enc")
+    val PROTOCOL = stringPreferencesKey("mail_protocol")
+    val SECURITY = stringPreferencesKey("mail_security")
+    val HOST = stringPreferencesKey("mail_host")
+    val PORT = stringPreferencesKey("mail_port")
+    val FOLDER = stringPreferencesKey("mail_folder")
 }
+
+private fun Preferences.mailSettings() = MailSettings(
+    email = this[Keys.EMAIL].orEmpty(),
+    protocol = MailProtocol.entries.firstOrNull { it.name == this[Keys.PROTOCOL] } ?: MailProtocol.IMAP,
+    security = MailSecurity.entries.firstOrNull { it.name == this[Keys.SECURITY] } ?: MailSecurity.TLS,
+    host = this[Keys.HOST].orEmpty(),
+    port = this[Keys.PORT]?.toIntOrNull(),
+    folder = this[Keys.FOLDER].orEmpty(),
+)
 
 class BahnViewModel internal constructor(
     private val dataStore: DataStore<Preferences>,
@@ -87,7 +102,7 @@ class BahnViewModel internal constructor(
                 it.copy(
                     from = from,
                     to = to,
-                    email = prefs[Keys.EMAIL].orEmpty(),
+                    mail = prefs.mailSettings(),
                     hasPassword = !prefs[Keys.PASSWORD].isNullOrEmpty(),
                     tickets = tickets,
                 )
@@ -135,6 +150,9 @@ class BahnViewModel internal constructor(
             Field.TIME -> "Abfahrt (z. B. 17:30)" to ""
             Field.EMAIL -> "Ticket-Mailadresse" to s.email
             Field.PASSWORD -> "App-Passwort" to ""
+            Field.SERVER -> "Server (leer = automatisch)" to s.mail.host
+            Field.PORT -> "Port (leer = automatisch)" to (s.mail.port?.toString() ?: "")
+            Field.FOLDER -> "Ordner (leer = INBOX)" to s.mail.folder
         }
         _state.update { it.copy(editSession = it.editSession + 1) }
         push(Mode.EditText(field, title, initial))
@@ -154,7 +172,24 @@ class BahnViewModel internal constructor(
             }
             Field.EMAIL -> viewModelScope.launch {
                 dataStore.edit { it[Keys.EMAIL] = value }
-                _state.update { it.copy(email = value) }
+                _state.update { it.copy(mail = it.mail.copy(email = value)) }
+            }
+            Field.SERVER -> viewModelScope.launch {
+                dataStore.edit { it[Keys.HOST] = value }
+                _state.update { it.copy(mail = it.mail.copy(host = value)) }
+            }
+            Field.PORT -> {
+                val port = value.toIntOrNull()
+                if (value.isNotEmpty() && (port == null || port !in 1..65535)) {
+                    _state.update { it.copy(message = "Ungültiger Port: $value") }
+                } else viewModelScope.launch {
+                    dataStore.edit { if (port == null) it.remove(Keys.PORT) else it[Keys.PORT] = port.toString() }
+                    _state.update { it.copy(mail = it.mail.copy(port = port)) }
+                }
+            }
+            Field.FOLDER -> viewModelScope.launch {
+                dataStore.edit { it[Keys.FOLDER] = value }
+                _state.update { it.copy(mail = it.mail.copy(folder = value)) }
             }
             Field.PASSWORD -> if (value.isNotEmpty()) viewModelScope.launch {
                 val encrypted = withContext(Dispatchers.IO) { CredentialCipher.encrypt(value) }
@@ -274,9 +309,9 @@ class BahnViewModel internal constructor(
     fun refreshTickets() {
         viewModelScope.launch {
             val prefs = dataStore.data.first()
-            val email = prefs[Keys.EMAIL].orEmpty()
+            val mail = prefs.mailSettings()
             val password = prefs[Keys.PASSWORD]?.let { CredentialCipher.decrypt(it) }
-            if (email.isBlank() || password.isNullOrEmpty()) {
+            if (mail.email.isBlank() || password.isNullOrEmpty()) {
                 push(Mode.Settings)
                 _state.update { it.copy(message = "Bitte zuerst Ticket-Mailadresse und App-Passwort eintragen.") }
                 return@launch
@@ -284,7 +319,7 @@ class BahnViewModel internal constructor(
             _state.update { it.copy(busy = "Hole Fahrkarten aus dem Postfach …") }
             lastTicketRefresh = System.currentTimeMillis()
             try {
-                val added = withContext(Dispatchers.IO) { ticketStore.refresh(email, password) }
+                val added = withContext(Dispatchers.IO) { ticketStore.refresh(mail, password) }
                 val tickets = withContext(Dispatchers.IO) { ticketStore.tickets() }
                 _state.update {
                     it.copy(
@@ -334,18 +369,35 @@ class BahnViewModel internal constructor(
 
     fun openSettings() = push(Mode.Settings)
 
+    /** Wechselt zwischen IMAP und POP3. Ein eingetragener Port wird zurückgesetzt, damit er zum Protokoll passt. */
+    fun toggleProtocol() = saveMail { it.copy(protocol = if (it.protocol == MailProtocol.IMAP) MailProtocol.POP3 else MailProtocol.IMAP, port = null) }
+
+    fun toggleSecurity() = saveMail { it.copy(security = if (it.security == MailSecurity.TLS) MailSecurity.STARTTLS else MailSecurity.TLS, port = null) }
+
+    private fun saveMail(change: (MailSettings) -> MailSettings) {
+        val updated = change(_state.value.mail)
+        _state.update { it.copy(mail = updated) }
+        viewModelScope.launch {
+            dataStore.edit {
+                it[Keys.PROTOCOL] = updated.protocol.name
+                it[Keys.SECURITY] = updated.security.name
+                if (updated.port == null) it.remove(Keys.PORT) else it[Keys.PORT] = updated.port.toString()
+            }
+        }
+    }
+
     fun testLogin() {
         viewModelScope.launch {
             val prefs = dataStore.data.first()
-            val email = prefs[Keys.EMAIL].orEmpty()
+            val mail = prefs.mailSettings()
             val password = prefs[Keys.PASSWORD]?.let { CredentialCipher.decrypt(it) }
-            if (email.isBlank() || password.isNullOrEmpty()) {
+            if (mail.email.isBlank() || password.isNullOrEmpty()) {
                 _state.update { it.copy(message = "Adresse und App-Passwort fehlen noch.") }
                 return@launch
             }
-            _state.update { it.copy(busy = "Teste Anmeldung …") }
+            _state.update { it.copy(busy = "Teste Anmeldung bei ${mail.effectiveHost}:${mail.effectivePort} …") }
             try {
-                withContext(Dispatchers.IO) { ticketStore.testLogin(email, password) }
+                withContext(Dispatchers.IO) { ticketStore.testLogin(mail, password) }
                 _state.update { it.copy(busy = null, message = "Anmeldung klappt.") }
             } catch (e: Exception) {
                 fail(e)
@@ -356,12 +408,12 @@ class BahnViewModel internal constructor(
     fun forgetMailAccess() {
         viewModelScope.launch {
             dataStore.edit {
-                it.remove(Keys.EMAIL)
-                it.remove(Keys.PASSWORD)
+                listOf(Keys.EMAIL, Keys.PASSWORD, Keys.PROTOCOL, Keys.SECURITY, Keys.HOST, Keys.PORT, Keys.FOLDER)
+                    .forEach { key -> it.remove(key) }
             }
             withContext(Dispatchers.IO) { ticketStore.deleteAll() }
             _state.update {
-                it.copy(email = "", hasPassword = false, tickets = emptyList(), message = "Zugang und Fahrkarten gelöscht.")
+                it.copy(mail = MailSettings(), hasPassword = false, tickets = emptyList(), message = "Zugang und Fahrkarten gelöscht.")
             }
         }
     }

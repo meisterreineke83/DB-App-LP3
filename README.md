@@ -45,8 +45,12 @@ Das Tool bekommt **nicht** dein normales Postfach, sondern eine eigene Adresse n
    Bei Käufen ohne Konto einfach diese Adresse angeben.
 5. Im Tool: Zahnrad → Adresse und App-Passwort eintragen → „Testen“.
 
-Unterstützt werden u. a. web.de, GMX, Gmail, Posteo, mailbox.org, T-Online und iCloud; bei
-anderen Anbietern wird `imap.<domain>` versucht. Beim Öffnen der Ticket-Liste sucht das Tool
+**Server-Einstellungen** (Zahnrad im Tool): Protokoll **IMAP oder POP3**, Server, Port,
+Verschlüsselung (**SSL/TLS oder STARTTLS**) und – bei IMAP – der Ordner. Leer gelassen wird alles
+automatisch gewählt: Für web.de, GMX, Gmail, Posteo, mailbox.org, T-Online und iCloud kennt das Tool
+die Server, sonst versucht es `imap.<domain>` bzw. `pop.<domain>`. SMTP wird nicht gebraucht, das ist
+nur zum Senden. Bei POP3 löscht das Tool nichts; beim Anbieter sollte aber „Mails nach Abruf
+löschen“ ausgeschaltet sein. Unverschlüsselte Verbindungen werden bewusst nicht unterstützt. Beim Öffnen der Ticket-Liste sucht das Tool
 automatisch nach neuen Fahrkarten (höchstens alle 10 Minuten).
 
 ## APK bauen lassen (ohne eigene Entwicklungsumgebung)

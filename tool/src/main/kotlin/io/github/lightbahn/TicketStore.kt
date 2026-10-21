@@ -7,8 +7,6 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.security.KeyStore
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.util.Base64
 import java.util.Locale
 import javax.crypto.Cipher
@@ -28,7 +26,8 @@ data class TicketEntry(
 @Serializable
 private data class TicketIndex(
     val tickets: List<TicketEntry> = emptyList(),
-    val checkedUids: List<Long> = emptyList(),
+    /** Bereits geprüfte Mails, z. B. "imap|imap.web.de|adresse|INBOX|123" oder "pop3|…|<UIDL>". */
+    val checkedKeys: List<String> = emptyList(),
 )
 
 /**
@@ -45,35 +44,34 @@ internal class TicketStore(filesDir: File) {
     fun file(name: String): File = File(dir, name)
 
     /** @return Anzahl neu gefundener Fahrkarten */
-    fun refresh(email: String, password: String, lookbackDays: Long = 120): Int {
+    fun refresh(settings: MailSettings, password: String, lookbackDays: Long = 120): Int {
         val index = readIndex()
-        val known = index.checkedUids.toMutableSet()
+        val known = index.checkedKeys.toMutableSet()
         val tickets = index.tickets.toMutableList()
+        var nextId = (tickets.maxOfOrNull { it.uid } ?: 0L) + 1
         var added = 0
 
-        ImapClient(ImapClient.hostFor(email)).use { imap ->
-            imap.connect()
-            imap.login(email, password)
-            imap.examine("INBOX")
-            val since = LocalDate.now().minusDays(lookbackDays)
-                .format(DateTimeFormatter.ofPattern("dd-MMM-yyyy", Locale.US))
-            val uids = imap.uidSearch("SINCE $since FROM \"bahn.de\"")
+        MailReader.create(settings, password).use { reader ->
+            reader.open()
+            val keys = reader.candidateKeys(lookbackDays)
                 .filter { it !in known }
-                .sortedDescending()
-                .take(25)
+                .take(40)
+                .reversed() // älteste zuerst, damit neuere Mails die höheren Nummern bekommen
 
-            for (uid in uids) {
-                val raw = imap.fetchMessage(uid) ?: continue
-                known += uid
+            for (key in keys) {
+                val raw = reader.fetch(key)
+                known += key
+                if (raw == null) continue
                 val mail = MimeParser.parse(raw)
                 if (mail.pdfs.isEmpty()) continue
+                val id = nextId++
                 val files = mail.pdfs.mapIndexed { i, (_, bytes) ->
-                    val name = "${uid}_$i.pdf"
+                    val name = "${id}_$i.pdf"
                     File(dir, name).writeBytes(bytes)
                     name
                 }
                 tickets += TicketEntry(
-                    uid = uid,
+                    uid = id,
                     subject = mail.subject.ifBlank { "Fahrkarte" },
                     date = mail.date,
                     text = mail.text,
@@ -81,20 +79,18 @@ internal class TicketStore(filesDir: File) {
                 )
                 added++
             }
-            imap.logout()
+            reader.quit()
         }
 
         writeIndex(TicketIndex(tickets, known.toList()))
         return added
     }
 
-    /** Prüft nur die Anmeldung, ohne etwas zu laden. */
-    fun testLogin(email: String, password: String) {
-        ImapClient(ImapClient.hostFor(email)).use { imap ->
-            imap.connect()
-            imap.login(email, password)
-            imap.examine("INBOX")
-            imap.logout()
+    /** Prüft nur Verbindung und Anmeldung, ohne etwas zu laden. */
+    fun testLogin(settings: MailSettings, password: String) {
+        MailReader.create(settings, password).use { reader ->
+            reader.open()
+            reader.quit()
         }
     }
 
