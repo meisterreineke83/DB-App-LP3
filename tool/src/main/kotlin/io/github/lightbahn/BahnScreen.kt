@@ -97,6 +97,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
 
                     mode is Mode.Home -> HomeContent(state)
                     mode is Mode.PickStation -> PickStationContent(mode)
+                    mode is Mode.PickDay -> PickDayContent()
                     mode is Mode.Results -> ResultsContent(state)
                     mode is Mode.Detail -> DetailContent(mode.journey, state.message)
                     mode is Mode.Tickets -> TicketsContent(state, mode)
@@ -225,7 +226,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                 label = "Abfahrt",
                 value = describeDeparture(state.departure),
                 placeholder = "Jetzt",
-                onClick = { viewModel.edit(Field.TIME) },
+                onClick = viewModel::editDeparture,
                 modifier = Modifier.padding(top = 1.5f.gridUnitsAsDp()),
             )
             Row(
@@ -241,6 +242,23 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                     onClick = viewModel::search,
                 )
                 ActionLink(text = "Tickets", onClick = viewModel::openTickets)
+            }
+        }
+    }
+
+    @Composable
+    private fun PickDayContent() {
+        val today = java.time.LocalDate.now(BERLIN)
+        Page(title = "Tag") {
+            Row2(top = "Jetzt", bottom = null, onClick = { viewModel.pickDay(null) })
+            (0L until 14L).forEach { offset ->
+                val day = today.plusDays(offset)
+                val label = when (offset) {
+                    0L -> "Heute"
+                    1L -> "Morgen"
+                    else -> dayLabel(day)
+                }
+                Row2(top = label, bottom = null, onClick = { viewModel.pickDay(day) })
             }
         }
     }

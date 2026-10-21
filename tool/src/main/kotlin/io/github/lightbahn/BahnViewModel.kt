@@ -28,6 +28,7 @@ sealed interface Mode {
     data class Tickets(val highlight: List<Long> = emptyList()) : Mode
     data class TicketView(val entry: TicketEntry, val fileIndex: Int) : Mode
     data object Settings : Mode
+    data object PickDay : Mode
 }
 
 data class BahnUiState(
@@ -126,6 +127,7 @@ class BahnViewModel internal constructor(
         if (s.busy != null) return true
         if (s.stack.size <= 1) return false
         if (s.mode is Mode.TicketView) rendered.value = null
+        if (s.mode is Mode.EditText && (s.mode as Mode.EditText).field == Field.TIME) pendingDay = null
         pop()
         return true
     }
@@ -142,12 +144,34 @@ class BahnViewModel internal constructor(
 
     // ---------- Eingabe ----------
 
+    /** Tag für die nächste Uhrzeit-Eingabe (gesetzt in der Tagesauswahl). */
+    private var pendingDay: java.time.LocalDate? = null
+
+    /** Abfahrt: erst den Tag wählen, dann die Uhrzeit. */
+    fun editDeparture() = push(Mode.PickDay)
+
+    /** @param day null = jetzt */
+    fun pickDay(day: java.time.LocalDate?) {
+        pop()
+        if (day == null) {
+            _state.update { it.copy(departure = null) }
+            return
+        }
+        pendingDay = day
+        edit(Field.TIME)
+    }
+
     fun edit(field: Field) {
+        if (field == Field.TIME && pendingDay == null) {
+            editDeparture()
+            return
+        }
         val s = _state.value
         val (title, initial) = when (field) {
             Field.FROM -> "Von" to ""
             Field.TO -> "Nach" to ""
-            Field.TIME -> "Abfahrt: 17:30 · morgen 8:00 · leer = jetzt" to ""
+            Field.TIME -> "Uhrzeit ${dayLabel(pendingDay)} (z. B. 17:30)" to
+                (s.departure?.let { "%02d:%02d".format(it.hour, it.minute) } ?: "")
             Field.EMAIL -> "Ticket-Mailadresse" to s.email
             Field.PASSWORD -> "App-Passwort" to ""
             Field.SERVER -> "Server (leer = automatisch)" to s.mail.host
@@ -164,11 +188,15 @@ class BahnViewModel internal constructor(
         pop()
         when (mode.field) {
             Field.FROM, Field.TO -> if (value.isNotEmpty()) searchStations(mode.field, value)
-            Field.TIME -> try {
-                val departure = parseDeparture(value)
-                _state.update { it.copy(departure = departure) }
-            } catch (e: Exception) {
-                fail(e)
+            Field.TIME -> {
+                val day = pendingDay
+                pendingDay = null
+                try {
+                    val departure = parseTimeOnDay(day, value)
+                    _state.update { it.copy(departure = departure) }
+                } catch (e: Exception) {
+                    fail(e)
+                }
             }
             Field.EMAIL -> viewModelScope.launch {
                 dataStore.edit { it[Keys.EMAIL] = value }

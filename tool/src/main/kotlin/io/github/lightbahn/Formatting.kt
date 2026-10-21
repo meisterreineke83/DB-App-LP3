@@ -121,3 +121,29 @@ internal fun describeDeparture(value: ZonedDateTime?): String {
     }
     return "$day ${value.format(TIME)}"
 }
+
+/** "heute", "morgen" oder z. B. "Fr 23.10." */
+internal fun dayLabel(day: LocalDate?, today: LocalDate = LocalDate.now(BERLIN)): String = when (day) {
+    null, today -> "heute"
+    today.plusDays(1) -> "morgen"
+    else -> day.format(DAY)
+}
+
+/**
+ * Uhrzeit an einem gewählten Tag. Leer: heute = jetzt, an anderen Tagen 6:00 Uhr.
+ * Akzeptiert auch die freie Eingabe von [parseDeparture] (z. B. "24.10. 9:00").
+ */
+internal fun parseTimeOnDay(
+    day: LocalDate?,
+    input: String,
+    now: ZonedDateTime = ZonedDateTime.now(BERLIN),
+): ZonedDateTime? {
+    val text = input.trim().lowercase(Locale.GERMAN).removeSuffix("uhr").trim()
+    val today = now.toLocalDate()
+    if (day == null || day == today) return parseDeparture(text, now)
+    if (text.isEmpty()) return ZonedDateTime.of(day, LocalTime.of(6, 0), BERLIN)
+    val m = Regex("""^(\d{1,2})(?:[:.](\d{2}))?$""").find(text)
+        ?: return parseDeparture(text, now)
+    val time = LocalTime.of(m.groupValues[1].toInt(), m.groupValues[2].toIntOrNull() ?: 0)
+    return ZonedDateTime.of(day, time, BERLIN)
+}

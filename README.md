@@ -5,10 +5,16 @@ Ich versuche mithilfe von Claude eine Bahn App für Deutschland zu programmieren
 Verbindungen suchen und die Fahrkarte aus der Bahn-Mail anzeigen. Kein Konto bei der Bahn,
 keine Werbung, kein Tracking.
 
+<p>
+  <img src="docs/screenshots/start.jpg" width="250" alt="Startseite">
+  <img src="docs/screenshots/verbindungen.jpg" width="250" alt="Verbindungen">
+  <img src="docs/screenshots/fahrkarten.jpg" width="250" alt="Fahrkarten">
+</p>
+
 **Was es kann**
 
-- **Verbindungssuche:** Von/Nach eintippen, Bahnhof wählen, optional eine Abfahrtszeit
-  (`17:30`, `morgen 7:15`, `24.10. 9:00`). Ergebnisse mit Verspätung, Umstiegen und Gleis,
+- **Verbindungssuche:** Von/Nach eintippen, Bahnhof wählen, optional Tag und Uhrzeit der Abfahrt
+  (Tag aus einer Liste wählen, dann z. B. `17:30` eintippen). Ergebnisse mit Verspätung, Umstiegen und Gleis,
   Gleiswechsel werden markiert. Die letzte Strecke bleibt gespeichert; „Tauschen“ dreht sie um.
 - **Fahrkarten per Mail:** Das Tool liest eine eigene Ticket-Adresse (nicht dein normales
   Postfach) und holt per IMAP nur Mails von `bahn.de`, speichert deren
