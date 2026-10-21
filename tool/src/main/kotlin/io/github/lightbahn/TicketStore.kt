@@ -26,6 +26,7 @@ data class TicketEntry(
     /** Aus Fahrkarte/Mail gelesen (ISO-Datum, "06:12", Bahnhofsnamen). */
     val travelDate: String? = null,
     val departureTime: String? = null,
+    val arrivalTime: String? = null,
     val fromStation: String? = null,
     val toStation: String? = null,
     val infoVersion: Int = 0,
@@ -53,7 +54,7 @@ private data class TicketIndex(
 )
 
 /** Erhöhen, wenn sich das Auslesen von Datum/Bahnhöfen verbessert → alte Tickets werden neu gelesen. */
-private const val INFO_VERSION = 1
+private const val INFO_VERSION = 2
 
 /**
  * Holt Fahrkarten-PDFs aus Bahn-Mails und legt sie lokal im Tool-Speicher ab.
@@ -187,6 +188,7 @@ internal class TicketStore(filesDir: File) {
         return entry.copy(
             travelDate = info.date?.toString(),
             departureTime = info.time,
+            arrivalTime = info.arrival,
             fromStation = info.from,
             toStation = info.to,
             infoVersion = INFO_VERSION,

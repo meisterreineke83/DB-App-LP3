@@ -325,8 +325,9 @@ internal object PdfText {
                 sb.append("\n\n")
             }
             return sb.toString()
-                .replace(Regex("[ \\t\\u00A0]+"), " ")
-                .replace(Regex(" *\\n *"), "\n")
+                .replace(Regex("[ \\u00A0]+"), " ")
+                .replace(Regex(" *\\t[ \\t]*"), "\t")
+                .replace(Regex("[ \\t]*\\n[ \\t]*"), "\n")
                 .replace(Regex("\\n{3,}"), "\n\n")
                 .trim()
         }
@@ -399,6 +400,15 @@ internal object PdfText {
         }
     }
 
+    private val IDENTITY = doubleArrayOf(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+    /** Matrixprodukt a × b für PDF-Matrizen [a b c d e f]. */
+    private fun mul(a: DoubleArray, b: DoubleArray) = doubleArrayOf(
+        a[0] * b[0] + a[1] * b[2], a[0] * b[1] + a[1] * b[3],
+        a[2] * b[0] + a[3] * b[2], a[2] * b[1] + a[3] * b[3],
+        a[4] * b[0] + a[5] * b[2] + b[4], a[4] * b[1] + a[5] * b[3] + b[5],
+    )
+
     private class Font(val bytes: Int, val toUnicode: Map<Int, String>?) {
         fun decode(s: ByteArray): String {
             val sb = StringBuilder()
@@ -425,40 +435,70 @@ internal object PdfText {
 
     // ---------------------------------------------------------------- Inhalts-Stream
 
+    /** Ein Textstück mit Position (Gerätekoordinaten, y nach oben) und geschätzter Breite. */
+    private class Run(val x: Double, val y: Double, val size: Double, val text: StringBuilder) {
+        val endX: Double get() = x + text.length * size * 0.5
+    }
+
+    /**
+     * Sammelt Textstücke mit ihrer Position und setzt sie danach zeilenweise
+     * (von oben nach unten, links nach rechts) zusammen – so wie es gedruckt aussieht.
+     * Tabellen, die im PDF spaltenweise geschrieben sind, kommen so wieder als Zeilen heraus.
+     * Große Lücken innerhalb einer Zeile werden zu einem Tabulator.
+     */
     private class TextWriter(val doc: Doc, val out: StringBuilder) {
-        private var lineY = 0.0
-        private var lastY: Double? = null
-        private var pendingSpace = false
+        private val runs = ArrayList<Run>()
+        private var current: Run? = null
+
+        private var ctm = IDENTITY
+        private val stack = ArrayList<DoubleArray>()
+        private var tm = IDENTITY
+        private var tlm = IDENTITY
+        private var fontSize = 10.0
+        private var leading = 0.0
 
         fun run(content: ByteArray, resources: Map<*, *>?, depth: Int) {
+            interpret(content, resources, depth)
+            flushPage()
+        }
+
+        private fun interpret(content: ByteArray, resources: Map<*, *>?, depth: Int) {
             if (depth > 4) return
             val lx = Lexer(content)
             val ops = ArrayList<Any?>()
             var font = doc.font(resources, "")
-            var leading = 0.0
             while (true) {
                 val t = runCatching { lx.next() }.getOrElse { return }
                 if (t === Lexer.EOF) break
                 if (t !is Op) { ops += t; continue }
                 when (t.value) {
-                    "BT" -> { lineY = 0.0 }
-                    "Tf" -> (ops.getOrNull(0) as? Name)?.let { font = doc.font(resources, it.value) }
+                    "q" -> stack += ctm
+                    "Q" -> if (stack.isNotEmpty()) ctm = stack.removeAt(stack.size - 1)
+                    "cm" -> matrix(ops)?.let { ctm = mul(it, ctm) }
+                    "BT" -> { tm = IDENTITY; tlm = IDENTITY; current = null }
+                    "Tf" -> {
+                        (ops.getOrNull(0) as? Name)?.let { font = doc.font(resources, it.value) }
+                        fontSize = num(ops.getOrNull(1)).takeIf { it != 0.0 } ?: fontSize
+                    }
                     "TL" -> leading = num(ops.getOrNull(0))
-                    "Td" -> move(num(ops.getOrNull(1)))
-                    "TD" -> { leading = -num(ops.getOrNull(1)); move(num(ops.getOrNull(1))) }
-                    "Tm" -> setY(num(ops.getOrNull(5)))
-                    "T*" -> move(-leading.coerceAtLeast(1.0))
+                    "Td" -> move(num(ops.getOrNull(0)), num(ops.getOrNull(1)))
+                    "TD" -> { leading = -num(ops.getOrNull(1)); move(num(ops.getOrNull(0)), num(ops.getOrNull(1))) }
+                    "Tm" -> matrix(ops)?.let { tlm = it; tm = it; current = null }
+                    "T*" -> move(0.0, -leading)
                     "Tj" -> show(font, ops.getOrNull(0))
-                    "'" -> { move(-leading.coerceAtLeast(1.0)); show(font, ops.getOrNull(0)) }
-                    "\"" -> { move(-leading.coerceAtLeast(1.0)); show(font, ops.getOrNull(2)) }
+                    "'" -> { move(0.0, -leading); show(font, ops.getOrNull(0)) }
+                    "\"" -> { move(0.0, -leading); show(font, ops.getOrNull(2)) }
                     "TJ" -> (ops.getOrNull(0) as? List<*>)?.forEach { item ->
-                        if (item is Str) show(font, item) else if (item is Double && item < -200) pendingSpace = true
+                        if (item is Str) show(font, item)
+                        else if (item is Double && item < -200) current?.text?.let { if (it.isNotEmpty() && it.last() != ' ') it.append(' ') }
                     }
                     "Do" -> (ops.getOrNull(0) as? Name)?.let { n ->
                         doc.xobject(resources, n.value)?.let { (data, res) ->
-                            out.append('\n'); lastY = null
-                            run(data, res, depth + 1)
-                            out.append('\n'); lastY = null
+                            val savedCtm = ctm
+                            current = null
+                            interpret(data, res, depth + 1)
+                            ctm = savedCtm
+                            current = null
                         }
                     }
                     "ID" -> skipInlineImage(lx, content)
@@ -469,25 +509,58 @@ internal object PdfText {
 
         private fun num(v: Any?): Double = (v as? Double) ?: 0.0
 
-        private fun move(dy: Double) {
-            lineY += dy
-            pendingSpace = true
+        private fun matrix(ops: List<Any?>): DoubleArray? {
+            if (ops.size < 6) return null
+            return DoubleArray(6) { num(ops[ops.size - 6 + it]) }
         }
 
-        private fun setY(y: Double) {
-            lineY = y
-            pendingSpace = true
+        private fun move(tx: Double, ty: Double) {
+            tlm = mul(doubleArrayOf(1.0, 0.0, 0.0, 1.0, tx, ty), tlm)
+            tm = tlm
+            current = null
         }
 
         private fun show(font: Font, v: Any?) {
             val s = (v as? Str)?.let { font.decode(it.bytes) } ?: return
             if (s.isEmpty()) return
-            val last = lastY
-            if (last != null && kotlin.math.abs(last - lineY) > 1.0) out.append('\n')
-            else if (pendingSpace && out.isNotEmpty() && !out.last().isWhitespace()) out.append(' ')
-            pendingSpace = false
-            lastY = lineY
-            out.append(s)
+            val run = current ?: run {
+                val m = mul(tm, ctm)
+                val scale = kotlin.math.sqrt(m[2] * m[2] + m[3] * m[3]).takeIf { it > 0 } ?: 1.0
+                Run(m[4], m[5], fontSize * scale, StringBuilder()).also { runs += it; current = it }
+            }
+            run.text.append(s)
+        }
+
+        private fun flushPage() {
+            val list = runs.filter { it.text.isNotBlank() }
+            if (list.isEmpty()) return
+            // Zeilen bilden: Stücke mit (fast) gleicher Höhe gehören zusammen.
+            val sorted = list.sortedByDescending { it.y }
+            val lines = ArrayList<MutableList<Run>>()
+            for (r in sorted) {
+                val line = lines.lastOrNull()
+                val tol = maxOf(2.0, r.size * 0.4)
+                if (line != null && kotlin.math.abs(line.first().y - r.y) <= tol) line += r else lines += mutableListOf(r)
+            }
+            for (line in lines) {
+                line.sortBy { it.x }
+                val sb = StringBuilder()
+                var prev: Run? = null
+                for (r in line) {
+                    val t = r.text.toString()
+                    if (prev != null) {
+                        val gap = r.x - prev.endX
+                        when {
+                            gap > r.size * 1.2 -> sb.append('\t')
+                            !sb.endsWith(" ") && !t.startsWith(" ") && gap > r.size * 0.1 -> sb.append(' ')
+                        }
+                    }
+                    sb.append(t)
+                    prev = r
+                }
+                out.append(sb.toString().trim()).append('\n')
+            }
+            runs.clear()
         }
 
         private fun skipInlineImage(lx: Lexer, b: ByteArray) {
