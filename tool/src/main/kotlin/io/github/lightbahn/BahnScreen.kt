@@ -168,6 +168,20 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         }
     }
 
+    /** Großer, gut tippbarer Text-Knopf im Inhalt (zusätzlich zur Leiste unten). */
+    @Composable
+    private fun ActionLink(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+        LightText(
+            text = text,
+            variant = LightTextVariant.Subheading,
+            lighten = !enabled,
+            modifier = modifier
+                .fillMaxWidth()
+                .lightClickable(enabled = enabled, onClick = onClick)
+                .padding(vertical = 1f.gridUnitsAsDp()),
+        )
+    }
+
     @Composable
     private fun BusyContent(text: String) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -213,6 +227,17 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                 value = describeDeparture(state.departure),
                 placeholder = "Jetzt",
                 onClick = { viewModel.edit(Field.TIME) },
+                modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
+            )
+            ActionLink(
+                text = "Verbindungen suchen →",
+                enabled = state.from != null && state.to != null,
+                onClick = viewModel::search,
+                modifier = Modifier.padding(top = 3f.gridUnitsAsDp()),
+            )
+            ActionLink(
+                text = "Fahrkarten →",
+                onClick = viewModel::openTickets,
                 modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
             )
             if (state.departure != null) {

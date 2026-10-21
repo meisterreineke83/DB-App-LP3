@@ -52,7 +52,9 @@ internal class ImapReader(
     override fun candidateKeys(lookbackDays: Long): List<String> {
         val since = LocalDate.now().minusDays(lookbackDays)
             .format(DateTimeFormatter.ofPattern("dd-MMM-yyyy", Locale.US))
-        return uidSearch("SINCE $since FROM \"bahn.de\"")
+        // Absender ODER Text enthält eine Bahn-Domain (Text deckt weitergeleitete Mails ab).
+        val terms = BAHN_DOMAINS.map { "FROM \"$it\"" } + BAHN_DOMAINS.map { "TEXT \"$it\"" }
+        return uidSearch("SINCE $since ${orChain(terms)}")
             .sortedDescending()
             .map { keyFor(it) }
     }
@@ -67,6 +69,10 @@ internal class ImapReader(
     }
 
     override fun close() = conn.close()
+
+    /** IMAP kennt nur binäres OR: OR a OR b OR c d */
+    private fun orChain(terms: List<String>): String =
+        if (terms.size == 1) terms[0] else "OR ${terms[0]} ${orChain(terms.drop(1))}"
 
     private fun keyFor(uid: Long) = "imap|${settings.effectiveHost}|${settings.email}|${settings.effectiveFolder}|$uid"
 
@@ -126,9 +132,9 @@ internal class ImapReader(
 }
 
 /**
- * Minimaler POP3-Client (nur lesend: UIDL, TOP, RETR – niemals DELE).
- * POP3 kennt keine Suche, deshalb werden zuerst nur die Kopfzeilen (TOP n 0) geholt
- * und nur Mails von bahn.de komplett geladen.
+ * Minimaler POP3-Client (nur lesend: UIDL und RETR – niemals DELE).
+ * POP3 kennt keine Suche, deshalb werden die neuesten Mails geladen und erst
+ * auf dem Telefon geprüft (deshalb ist eine eigene Ticket-Adresse sinnvoll).
  */
 internal class Pop3Reader(
     private val settings: MailSettings,
@@ -175,16 +181,11 @@ internal class Pop3Reader(
         return entries.map { it.second }
     }
 
-    /** Prüft nur die Kopfzeilen; lädt die Mail nur, wenn sie von bahn.de kommt. */
+    /** POP3 kennt keine Suche: Die Mail wird geladen und anschließend am Inhalt geprüft. */
     override fun fetch(key: String): ByteArray? {
         val number = numberByKey[key] ?: return null
-        command("TOP $number 0")
-        val headers = readMultiline().joinToString("\n")
-        val from = Regex("(?im)^From:(.*(?:\\n[ \\t].*)*)").find(headers)?.groupValues?.get(1).orEmpty()
-        if (!from.contains("bahn.de", ignoreCase = true)) return null
         command("RETR $number")
-        val lines = readMultiline()
-        return lines.joinToString("\r\n", postfix = "\r\n").toByteArray(Charsets.ISO_8859_1)
+        return readMultiline().joinToString("\r\n", postfix = "\r\n").toByteArray(Charsets.ISO_8859_1)
     }
 
     override fun quit() {

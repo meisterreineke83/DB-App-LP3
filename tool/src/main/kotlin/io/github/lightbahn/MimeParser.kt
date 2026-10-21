@@ -65,8 +65,10 @@ internal object MimeParser {
             (mimeType == "application/octet-stream" && decodedName?.lowercase()?.endsWith(".pdf") == true)
 
         val bytes = decodeBody(body, encoding)
+        val looksLikePdf = bytes.size > 4 && bytes[0] == '%'.code.toByte() && bytes[1] == 'P'.code.toByte() &&
+            bytes[2] == 'D'.code.toByte() && bytes[3] == 'F'.code.toByte()
         when {
-            isPdf -> pdfs += (decodedName ?: "Fahrkarte.pdf") to bytes
+            isPdf || (looksLikePdf && !mimeType.startsWith("text/")) -> pdfs += (decodedName ?: "Fahrkarte.pdf") to bytes
             mimeType == "text/plain" -> texts += String(bytes, charsetOf(contentType))
             mimeType == "text/html" -> texts += htmlToText(String(bytes, charsetOf(contentType)))
         }

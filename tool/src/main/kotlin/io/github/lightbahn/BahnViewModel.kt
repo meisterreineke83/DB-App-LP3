@@ -220,6 +220,9 @@ class BahnViewModel internal constructor(
         pop()
         _state.update { if (mode.field == Field.FROM) it.copy(from = station) else it.copy(to = station) }
         persistRoute()
+        // Sind jetzt Start und Ziel gesetzt, gleich die Verbindungen zeigen.
+        val s = _state.value
+        if (mode.field == Field.TO && s.from != null && s.to != null) search()
     }
 
     fun swap() {
@@ -319,19 +322,19 @@ class BahnViewModel internal constructor(
             _state.update { it.copy(busy = "Hole Fahrkarten aus dem Postfach …") }
             lastTicketRefresh = System.currentTimeMillis()
             try {
-                val added = withContext(Dispatchers.IO) { ticketStore.refresh(mail, password) }
+                val r = withContext(Dispatchers.IO) { ticketStore.refresh(mail, password) }
                 val tickets = withContext(Dispatchers.IO) { ticketStore.tickets() }
-                _state.update {
-                    it.copy(
-                        busy = null,
-                        tickets = tickets,
-                        message = when (added) {
-                            0 -> "Keine neuen Fahrkarten."
-                            1 -> "1 neue Fahrkarte."
-                            else -> "$added neue Fahrkarten."
-                        },
-                    )
+                val message = when {
+                    r.added == 1 -> "1 neue Fahrkarte."
+                    r.added > 1 -> "${r.added} neue Fahrkarten."
+                    r.checked == 0 -> "Keine neuen Mails von der Bahn im Postfach " +
+                        "(gesucht: ${BAHN_DOMAINS.joinToString(", ")})."
+                    r.withoutPdf > 0 -> "${r.withoutPdf} Bahn-Mail(s) gefunden, aber ohne PDF-Anhang – " +
+                        "darin steckt keine Fahrkarte als Datei."
+                    r.bahnMails == 0 -> "${r.checked} Mail(s) geprüft, keine davon von der Bahn."
+                    else -> "Keine neuen Fahrkarten."
                 }
+                _state.update { it.copy(busy = null, tickets = tickets, message = message) }
             } catch (e: Exception) {
                 fail(e)
             }

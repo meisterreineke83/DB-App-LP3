@@ -26,8 +26,11 @@ data class TicketEntry(
 @Serializable
 private data class TicketIndex(
     val tickets: List<TicketEntry> = emptyList(),
-    /** Bereits geprüfte Mails, z. B. "imap|imap.web.de|adresse|INBOX|123" oder "pop3|…|<UIDL>". */
-    val checkedKeys: List<String> = emptyList(),
+    /**
+     * Bereits geprüfte Mails, z. B. "imap|imap.web.de|adresse|INBOX|123" oder "pop3|…|<UIDL>".
+     * (Neuer Feldname ab 0.4.0, damit Mails mit der erweiterten Suche erneut geprüft werden.)
+     */
+    val seenKeys: List<String> = emptyList(),
 )
 
 /**
@@ -43,10 +46,14 @@ internal class TicketStore(filesDir: File) {
 
     fun file(name: String): File = File(dir, name)
 
-    /** @return Anzahl neu gefundener Fahrkarten */
-    fun refresh(settings: MailSettings, password: String, lookbackDays: Long = 120): Int {
+    data class RefreshResult(val checked: Int, val bahnMails: Int, val withoutPdf: Int, val added: Int)
+
+    fun refresh(settings: MailSettings, password: String, lookbackDays: Long = 365): RefreshResult {
         val index = readIndex()
-        val known = index.checkedKeys.toMutableSet()
+        val known = index.seenKeys.toMutableSet()
+        var checked = 0
+        var bahnMails = 0
+        var withoutPdf = 0
         val tickets = index.tickets.toMutableList()
         var nextId = (tickets.maxOfOrNull { it.uid } ?: 0L) + 1
         var added = 0
@@ -62,8 +69,14 @@ internal class TicketStore(filesDir: File) {
                 val raw = reader.fetch(key)
                 known += key
                 if (raw == null) continue
+                checked++
+                if (!mentionsBahn(raw)) continue
+                bahnMails++
                 val mail = MimeParser.parse(raw)
-                if (mail.pdfs.isEmpty()) continue
+                if (mail.pdfs.isEmpty()) {
+                    withoutPdf++
+                    continue
+                }
                 val id = nextId++
                 val files = mail.pdfs.mapIndexed { i, (_, bytes) ->
                     val name = "${id}_$i.pdf"
@@ -83,7 +96,7 @@ internal class TicketStore(filesDir: File) {
         }
 
         writeIndex(TicketIndex(tickets, known.toList()))
-        return added
+        return RefreshResult(checked, bahnMails, withoutPdf, added)
     }
 
     /** Prüft nur Verbindung und Anmeldung, ohne etwas zu laden. */

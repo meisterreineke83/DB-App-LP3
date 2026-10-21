@@ -146,12 +146,20 @@ internal class MailSocket(private val host: String, private val port: Int) : Clo
     }
 }
 
+/** Absender-Domains der Bahn. Auch weitergeleitete Mails werden erkannt, wenn eine davon im Text steht. */
+internal val BAHN_DOMAINS = listOf("bahn.de", "deutschebahn.com", "bahn.com", "db.com", "db.de")
+
+internal fun mentionsBahn(raw: ByteArray): Boolean {
+    val text = String(raw, Charsets.ISO_8859_1).lowercase()
+    return BAHN_DOMAINS.any { it in text }
+}
+
 /** Gemeinsame Schnittstelle für IMAP und POP3: nur lesen, nichts löschen. */
 internal interface MailReader : Closeable {
     /** Verbinden und anmelden. */
     fun open()
 
-    /** Schlüssel aller Mails, die von bahn.de stammen könnten (neueste zuerst). */
+    /** Schlüssel aller Mails, die von der Bahn stammen könnten (neueste zuerst). */
     fun candidateKeys(lookbackDays: Long): List<String>
 
     /** Komplette Mail zu einem Schlüssel aus [candidateKeys]. */
