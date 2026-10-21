@@ -5,11 +5,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
+          note() { echo "::notice title=$1::$(echo "$2" | head -c 900 | tr '\n' ' ')"; }
           for q in "Hamburg%20Hbf" "Berlin" "Muenchen"; do
-            echo "=== $q"
-            curl -sS -m 30 -w "\nHTTP %{http_code} in %{time_total}s\n" -A "LightBahn/0.1 (Light Phone III community tool)" \
-              "https://v6.db.transport.rest/locations?query=$q&results=3&stops=true&addresses=false&poi=false&language=de" | head -c 1500
-            echo
+            out=$(curl -sS -m 30 -w " HTTP=%{http_code} T=%{time_total}" -A "LightBahn/0.1 (Light Phone III community tool)" \
+              "https://v6.db.transport.rest/locations?query=$q&results=3&stops=true&addresses=false&poi=false&language=de" 2>&1)
+            note "$q" "$out"
           done
-          echo "=== ohne Zusatzparameter"
-          curl -sS -m 30 -w "\nHTTP %{http_code}\n" "https://v6.db.transport.rest/locations?query=Hamburg&results=2" | head -c 800
+          out=$(curl -sS -m 30 -w " HTTP=%{http_code}" "https://v6.db.transport.rest/locations?query=Hamburg&results=2" 2>&1)
+          note "plain" "$out"
