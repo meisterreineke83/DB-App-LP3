@@ -1,0 +1,48 @@
+name: Bahn-APK bauen
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: APK bauen
+        run: |
+          chmod +x gradlew
+          ./gradlew :tool:assembleDebug -DlightSdk.toolOnly=true --stacktrace
+          cp tool/build/outputs/apk/debug/*.apk Bahn.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Bahn-APK
+          path: Bahn.apk
+
+      - name: Als Release "neueste" veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: neueste
+          name: Bahn (neuester Build)
+          prerelease: true
+          files: Bahn.apk
+          body: |
+            Automatisch gebaut aus ${{ github.sha }}.
+            Installation: siehe README → „Aufs Light Phone bringen“.

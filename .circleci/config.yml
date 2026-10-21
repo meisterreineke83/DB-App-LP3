@@ -1,0 +1,198 @@
+version: 2.1
+
+parameters:
+  push-dev-image:
+    type: boolean
+    default: false
+
+jobs:
+  build-and-push-light-builder:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: xlarge
+    steps:
+      - checkout
+
+      - run:
+          name: resolve sdk version
+          command: |
+            set -euo pipefail
+
+            SDK_VERSION="$(
+              awk -F= '/^[[:space:]]*sdkVersion[[:space:]]*=/ {
+                value = $2
+                gsub(/^[[:space:]]+|[[:space:]\r]+$/, "", value)
+                print value
+                exit
+              }' gradle.properties
+            )"
+
+            if [[ -z "$SDK_VERSION" ]]; then
+              echo "sdkVersion is missing from gradle.properties" >&2
+              exit 1
+            fi
+            if [[ ! "$SDK_VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$ ]]; then
+              echo "sdkVersion '$SDK_VERSION' is not a valid Docker tag" >&2
+              exit 1
+            fi
+
+            if [[ -z "${CIRCLE_TAG:-}" ]]; then
+              echo "this job only runs on git tags" >&2
+              exit 1
+            fi
+            if [[ "$CIRCLE_TAG" != "$SDK_VERSION" && "$CIRCLE_TAG" != "v$SDK_VERSION" ]]; then
+              echo "tag '$CIRCLE_TAG' does not match sdkVersion '$SDK_VERSION' (or v$SDK_VERSION)" >&2
+              exit 1
+            fi
+
+            echo "SDK_GIT_URL=https://github.com/lightphone/light-sdk"
+            echo "SDK_GIT_REF=$CIRCLE_SHA1"
+            echo "CIRCLE_TAG=$CIRCLE_TAG"
+            echo "SDK_VERSION=$SDK_VERSION"
+            echo "export SDK_VERSION='$SDK_VERSION'" >> "$BASH_ENV"
+
+      - run:
+          name: install docker buildx
+          command: |
+            set -euo pipefail
+            if ! docker buildx version >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y docker-buildx-plugin || true
+            fi
+            docker buildx version
+            docker buildx create --use --name light-builder-builder || docker buildx use light-builder-builder
+
+      - run:
+          name: build light-builder image
+          no_output_timeout: 60m
+          command: |
+            set -euo pipefail
+            : "${GH_PACKAGES_USER:?GH_PACKAGES_USER must be set}"
+            : "${GH_PACKAGES_TOKEN:?GH_PACKAGES_TOKEN must be set}"
+
+            export DOCKER_BUILDKIT=1
+            docker build \
+              -f builder/Dockerfile \
+              --platform=linux/amd64 \
+              --add-host maven-proxy=127.0.0.1 \
+              --build-arg "SDK_GIT_URL=https://github.com/lightphone/light-sdk" \
+              --build-arg "SDK_GIT_REF=${CIRCLE_SHA1}" \
+              --secret id=github_token,env=GH_PACKAGES_TOKEN \
+              --secret id=gh_packages_user,env=GH_PACKAGES_USER \
+              -t "thelightphone/light-sdk-builder:${SDK_VERSION}" \
+              builder/
+
+      - run:
+          name: docker hub login
+          command: |
+            set -euo pipefail
+            echo "$LIGHT_DOCKER_HUB_PASSWORD" | \
+              docker login -u "$LIGHT_DOCKER_HUB_USERNAME" --password-stdin
+
+      - run:
+          name: push image tags
+          command: |
+            set -euo pipefail
+            docker push "thelightphone/light-sdk-builder:${SDK_VERSION}"
+            echo "pushed thelightphone/light-sdk-builder:${SDK_VERSION}"
+
+            docker tag \
+              "thelightphone/light-sdk-builder:${SDK_VERSION}" \
+              "thelightphone/light-sdk-builder:latest"
+            docker push "thelightphone/light-sdk-builder:latest"
+            echo "pushed thelightphone/light-sdk-builder:latest"
+
+            docker image inspect \
+              "thelightphone/light-sdk-builder:${SDK_VERSION}" \
+              --format '{{index .RepoDigests 0}}'
+
+  verify-light-builder:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: xlarge
+    steps:
+      - checkout
+
+      - run:
+          name: builder unit tests
+          command: |
+            set -euo pipefail
+            python3 -m venv /tmp/venv
+            /tmp/venv/bin/pip install -q pytest
+            cd builder && /tmp/venv/bin/python -m pytest -q
+
+      - run:
+          name: plugin unit tests
+          command: |
+            set -euo pipefail
+            docker run --rm -v "$PWD:/src" -w /src/plugin eclipse-temurin:17-jdk-noble \
+              ../gradlew test --no-daemon
+
+      - run:
+          name: build light-builder image
+          no_output_timeout: 60m
+          command: |
+            set -euo pipefail
+            docker build \
+              -f builder/Dockerfile \
+              --platform=linux/amd64 \
+              --add-host maven-proxy=127.0.0.1 \
+              --build-arg "SDK_GIT_URL=https://github.com/lightphone/light-sdk" \
+              --build-arg "SDK_GIT_REF=${CIRCLE_SHA1}" \
+              -t light-sdk-builder:verify \
+              builder/
+
+      - run:
+          name: proxy starts without network access
+          command: |
+            set -euo pipefail
+            bash builder/tests/check_proxy_startup.sh light-sdk-builder:verify
+
+      - run:
+          name: build sample tool and fixtures behind the Maven proxy
+          no_output_timeout: 60m
+          command: |
+            set -euo pipefail
+            builder/tests/integration.sh light-sdk-builder:verify /tmp/light-builder-integration
+
+      - store_artifacts:
+          path: /tmp/light-builder-integration
+          destination: integration
+
+      # Test images for light-two's pipeline. dev-* tags never move latest or a
+      # version tag; light-two pulls them only when LIGHT_BUILDER_SDK_GIT_REF is set.
+      # Login happens after every tool build has finished.
+      - run:
+          name: push dev image
+          command: |
+            set -euo pipefail
+            DEV_TAG="thelightphone/light-sdk-builder:dev-${CIRCLE_SHA1:0:12}"
+            echo "$LIGHT_DOCKER_HUB_PASSWORD" | \
+              docker login -u "$LIGHT_DOCKER_HUB_USERNAME" --password-stdin
+            docker tag light-sdk-builder:verify "$DEV_TAG"
+            docker push "$DEV_TAG"
+            docker logout
+            {
+              echo "image=$(docker image inspect "$DEV_TAG" --format '{{index .RepoDigests 0}}')"
+              echo "sdkCommit=${CIRCLE_SHA1}"
+            } | tee /tmp/dev-image.txt
+
+      - store_artifacts:
+          path: /tmp/dev-image.txt
+          destination: dev-image.txt
+
+workflows:
+  # Manual: trigger a pipeline on the wanted branch with push-dev-image=true.
+  verify-light-builder:
+    when: << pipeline.parameters.push-dev-image >>
+    jobs:
+      - verify-light-builder
+
+  build-light-builder:
+    jobs:
+      - build-and-push-light-builder:
+          filters:
+            tags:
+              only: /^v?\d+\.\d+\.\d+$/
+            branches:
+              ignore: /.*/
