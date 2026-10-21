@@ -5,11 +5,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          note() { echo "::notice title=$1::$(echo "$2" | head -c 900 | tr '\n' ' ')"; }
-          for q in "Hamburg%20Hbf" "Berlin" "Muenchen"; do
-            out=$(curl -sS -m 30 -w " HTTP=%{http_code} T=%{time_total}" -A "LightBahn/0.1 (Light Phone III community tool)" \
-              "https://v6.db.transport.rest/locations?query=$q&results=3&stops=true&addresses=false&poi=false&language=de" 2>&1)
-            note "$q" "$out"
-          done
-          out=$(curl -sS -m 30 -w " HTTP=%{http_code}" "https://v6.db.transport.rest/locations?query=Hamburg&results=2" 2>&1)
-          note "plain" "$out"
+          note() { echo "::notice title=$1::$(echo "$2" | head -c 1200 | tr '\n' ' ')"; }
+          UA="LightBahn/0.1 (Light Phone III community tool)"
+          note "dbrest" "$(curl -sS -m 30 -w ' HTTP=%{http_code}' -A "$UA" 'https://v6.db.transport.rest/locations?query=Hamburg&results=2' 2>&1)"
+          note "transitous-geocode" "$(curl -sS -m 30 -w ' HTTP=%{http_code}' -A "$UA" 'https://api.transitous.org/api/v1/geocode?text=Hamburg%20Hbf&language=de' 2>&1)"
+          note "bahnde-orte" "$(curl -sS -m 30 -w ' HTTP=%{http_code}' -A "$UA" 'https://int.bahn.de/web/api/reiseloesung/orte?suchbegriff=Hamburg%20Hbf&typ=ALL&limit=3' 2>&1)"
