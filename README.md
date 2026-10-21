@@ -24,7 +24,7 @@ keine Werbung, kein Tracking.
 
 | Was | Wohin | Wozu |
 |---|---|---|
-| Bahnhofsnamen, Start/Ziel, Zeit | `v6.db.transport.rest` (öffentliche Community-API, Daten der DB) | Fahrplan |
+| Bahnhofsnamen, Start/Ziel, Zeit | `api.transitous.org` (offener Community-Routenplaner, amtliche Fahrplandaten DELFI) | Fahrplan |
 | Ticket-Adresse + App-Passwort | IMAP-Server des Anbieters, Port 993 (TLS, Hostname geprüft) | Ticket-Mails lesen |
 
 - Das Postfach wird nur **lesend** geöffnet (`EXAMINE`, `BODY.PEEK`) – nichts wird als gelesen
@@ -90,7 +90,7 @@ Der Code des Tools liegt in [`tool/src/main/kotlin/io/github/lightbahn`](tool/sr
 |---|---|
 | `BahnScreen.kt` | Oberfläche mit den Bausteinen der Light SDK |
 | `BahnViewModel.kt` | Zustand, Navigation, Speichern |
-| `BahnApi.kt` | Fahrplan-Abfragen (db-rest) |
+| `BahnApi.kt` | Fahrplan-Abfragen (Transitous) |
 | `ImapClient.kt` | kleiner, nur lesender IMAP-Client (die SDK erlaubt keine Mail-Bibliothek) |
 | `MimeParser.kt` | holt Betreff, Text und PDF-Anhänge aus der Mail |
 | `TicketStore.kt` | lokale Ablage der Tickets, verschlüsseltes Passwort |

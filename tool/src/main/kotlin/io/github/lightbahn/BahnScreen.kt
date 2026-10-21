@@ -232,7 +232,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
     private fun PickStationContent(mode: Mode.PickStation) {
         Page(title = if (mode.field == Field.FROM) "Start" else "Ziel") {
             mode.results.forEach { station ->
-                Row2(top = station.name.orEmpty(), bottom = null, onClick = { viewModel.pickStation(station) })
+                Row2(top = station.name.orEmpty(), bottom = station.area, onClick = { viewModel.pickStation(station) })
             }
         }
     }

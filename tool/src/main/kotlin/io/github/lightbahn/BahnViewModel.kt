@@ -49,10 +49,10 @@ data class BahnUiState(
 }
 
 private object Keys {
-    val FROM_ID = stringPreferencesKey("from_id")
-    val FROM_NAME = stringPreferencesKey("from_name")
-    val TO_ID = stringPreferencesKey("to_id")
-    val TO_NAME = stringPreferencesKey("to_name")
+    val FROM_ID = stringPreferencesKey("from_id_v2")
+    val FROM_NAME = stringPreferencesKey("from_name_v2")
+    val TO_ID = stringPreferencesKey("to_id_v2")
+    val TO_NAME = stringPreferencesKey("to_name_v2")
     val EMAIL = stringPreferencesKey("imap_email")
     val PASSWORD = stringPreferencesKey("imap_password_enc")
 }
