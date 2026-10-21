@@ -328,7 +328,6 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         Page(
             title = journey.durationText().ifBlank { "Verbindung" },
             message = message,
-            bottomItems = listOf(LightBarButton.Text("TICKET", onClick = { viewModel.openTicketFor(journey) })),
         ) {
             journey.legs.forEach { leg ->
                 if (leg.walking) {
@@ -387,7 +386,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         val others = state.tickets.filterNot { it.uid in mode.highlight }
         Page(
             title = "Fahrkarten",
-            rightButton = LightBarButton.LightIcon(LightIcons.REFRESH, onClick = viewModel::refreshTickets),
+            rightButton = LightBarButton.LightIcon(LightIcons.REFRESH, onClick = viewModel::syncTickets),
             message = state.message,
         ) {
             if (state.tickets.isEmpty()) {
@@ -421,8 +420,8 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         ) {
             Box(modifier = Modifier.weight(1f)) {
                 Row2(
-                    top = entry.subject,
-                    bottom = mailDate(entry.date) + if (entry.files.size > 1) " · ${entry.files.size} PDFs" else "",
+                    top = entry.route ?: entry.subject,
+                    bottom = ticketDetailLine(entry),
                     onClick = { viewModel.openTicket(entry) },
                 )
             }
@@ -440,19 +439,20 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
     private fun ConfirmDeleteContent(entry: TicketEntry) {
         Page(title = "Löschen?", scroll = false) {
             LightText(
-                text = entry.subject,
+                text = entry.route ?: entry.subject,
                 variant = LightTextVariant.Copy,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis,
             )
             LightText(
-                text = mailDate(entry.date),
+                text = ticketDetailLine(entry),
                 variant = LightTextVariant.Detail,
                 lighten = true,
                 modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
             )
             LightText(
-                text = "Das Ticket wird nur vom Telefon gelöscht. Die Mail bleibt im Postfach.",
+                text = "Das Ticket wird nur vom Telefon gelöscht. Die Mail bleibt im Postfach – " +
+                    "beim Aktualisieren kommt es zurück, solange die Mail dort liegt.",
                 variant = LightTextVariant.Detail,
                 lighten = true,
                 modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
@@ -482,7 +482,6 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                     viewModel.openTicket(entry, (mode.fileIndex + 1) % entry.files.size)
                 }))
             }
-            add(LightBarButton.Text("LÖSCHEN", onClick = { viewModel.confirmDelete(entry) }))
         }
         Column(modifier = Modifier.fillMaxSize()) {
             LightTopBar(
@@ -521,9 +520,9 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
             }
             if (showDetails) {
                 LightText(
-                    text = entry.subject,
+                    text = listOfNotNull(entry.route, ticketDetailLine(entry)).joinToString("\n"),
                     variant = LightTextVariant.Detail,
-                    maxLines = 2,
+                    maxLines = 3,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp(), vertical = 1f.gridUnitsAsDp()),
                 )
@@ -535,7 +534,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                         modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
                     )
                 }
-                LightBottomBar(items = bottom)
+                if (bottom.isNotEmpty()) LightBottomBar(items = bottom)
             }
         }
     }
@@ -631,6 +630,32 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                 modifier = Modifier.padding(top = 3f.gridUnitsAsDp(), bottom = 2f.gridUnitsAsDp()),
             )
         }
+    }
+}
+
+/** z. B. "Fr. 23.10.2026 · ab 06:12 · Auftrag 925125168779" – ohne erkanntes Datum das Maildatum. */
+private fun ticketDetailLine(entry: TicketEntry): String {
+    val day = entry.travelDay()
+    val parts = buildList {
+        if (day != null) {
+            add(formatTravelDay(day))
+            entry.departureTime?.let { add("ab $it") }
+        } else {
+            add("Mail vom " + mailDate(entry.date))
+        }
+        if (entry.route != null) entry.orderNumber?.let { add("Auftrag $it") }
+        if (entry.files.size > 1) add("${entry.files.size} PDFs")
+    }
+    return parts.joinToString(" · ")
+}
+
+private fun formatTravelDay(day: java.time.LocalDate): String {
+    val today = java.time.LocalDate.now(BERLIN)
+    val date = day.format(java.time.format.DateTimeFormatter.ofPattern("EE dd.MM.yyyy", java.util.Locale.GERMAN))
+    return when (day) {
+        today -> "heute, $date"
+        today.plusDays(1) -> "morgen, $date"
+        else -> date
     }
 }
 

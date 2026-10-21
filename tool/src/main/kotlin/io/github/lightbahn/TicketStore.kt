@@ -21,17 +21,39 @@ data class TicketEntry(
     val date: String,
     val text: String,
     val files: List<String>,
-)
+    /** Kennung der Mail im Postfach – damit ein gelöschtes Ticket beim Aktualisieren wiederkommt. */
+    val key: String? = null,
+    /** Aus Fahrkarte/Mail gelesen (ISO-Datum, "06:12", Bahnhofsnamen). */
+    val travelDate: String? = null,
+    val departureTime: String? = null,
+    val fromStation: String? = null,
+    val toStation: String? = null,
+    val infoVersion: Int = 0,
+) {
+    val route: String?
+        get() = if (fromStation != null && toStation != null) "$fromStation → $toStation" else null
+
+    val orderNumber: String?
+        get() = Regex("""(?i)auftrag(?:snummer)?\s*:?\s*([A-Z0-9]{6,})""").find(subject)?.groupValues?.get(1)
+
+    fun travelDay(): java.time.LocalDate? = travelDate?.let { runCatching { java.time.LocalDate.parse(it) }.getOrNull() }
+}
 
 @Serializable
 private data class TicketIndex(
     val tickets: List<TicketEntry> = emptyList(),
     /**
      * Bereits geprüfte Mails, z. B. "imap|imap.web.de|adresse|INBOX|123" oder "pop3|…|<UIDL>".
-     * (Neuer Feldname ab 0.4.0, damit Mails mit der erweiterten Suche erneut geprüft werden.)
+     * (Neuer Feldname ab 0.7.0: Alle Mails werden einmal neu geprüft, damit jedes Ticket
+     * seine Mail-Kennung bekommt. Vorhandene Tickets werden dabei erkannt, nicht doppelt angelegt.)
      */
-    val seenKeys: List<String> = emptyList(),
+    val checkedKeys: List<String> = emptyList(),
+    /** Mails, deren Ticket auf dem Telefon gelöscht wurde. Beim Aktualisieren werden sie neu geladen. */
+    val deletedKeys: List<String> = emptyList(),
 )
+
+/** Erhöhen, wenn sich das Auslesen von Datum/Bahnhöfen verbessert → alte Tickets werden neu gelesen. */
+private const val INFO_VERSION = 1
 
 /**
  * Holt Fahrkarten-PDFs aus Bahn-Mails und legt sie lokal im Tool-Speicher ab.
@@ -42,16 +64,38 @@ internal class TicketStore(filesDir: File) {
     private val indexFile = File(dir, "index.json")
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun tickets(): List<TicketEntry> = readIndex().tickets.sortedByDescending { it.uid }
+    /**
+     * Reihenfolge: anstehende Fahrten zuerst (die nächste oben), danach vergangene
+     * (die jüngste oben). Tickets ohne erkanntes Datum stehen nach Eingang dazwischen.
+     */
+    fun tickets(): List<TicketEntry> {
+        val today = java.time.LocalDate.now(BERLIN)
+        val all = readIndex().tickets.sortedByDescending { it.uid }
+        val upcoming = all.filter { it.travelDay()?.let { d -> !d.isBefore(today) } == true }.sortedBy { it.travelDay() }
+        val undated = all.filter { it.travelDay() == null }
+        val past = all.filter { it.travelDay()?.isBefore(today) == true }.sortedByDescending { it.travelDay() }
+        return upcoming + undated + past
+    }
 
     fun file(name: String): File = File(dir, name)
 
     data class RefreshResult(val checked: Int, val bahnMails: Int, val withoutPdf: Int, val added: Int)
 
-    fun refresh(settings: MailSettings, password: String, lookbackDays: Long = 365): RefreshResult {
+    /**
+     * @param restoreDeleted true beim Tippen auf Aktualisieren: Tickets, die nur auf dem Telefon
+     *   gelöscht wurden, kommen zurück, solange die Mail noch im Postfach liegt.
+     */
+    @Synchronized
+    fun refresh(
+        settings: MailSettings,
+        password: String,
+        restoreDeleted: Boolean,
+        lookbackDays: Long = 365,
+    ): RefreshResult {
         val index = readIndex()
-        val known = index.seenKeys.toMutableSet()
-        var checked = 0
+        val checked = index.checkedKeys.toMutableSet()
+        val deleted = index.deletedKeys.toMutableSet()
+        var checkedCount = 0
         var bahnMails = 0
         var withoutPdf = 0
         val tickets = index.tickets.toMutableList()
@@ -60,21 +104,35 @@ internal class TicketStore(filesDir: File) {
 
         MailReader.create(settings, password).use { reader ->
             reader.open()
-            val keys = reader.candidateKeys(lookbackDays)
-                .filter { it !in known }
+            val candidates = reader.candidateKeys(lookbackDays)
+            if (restoreDeleted) {
+                // Aus dem Postfach gelöschte Mails können nicht mehr zurückkommen.
+                val present = candidates.toSet()
+                deleted.retainAll(present)
+            }
+            val keys = candidates
+                .filter { it !in checked || (restoreDeleted && it in deleted) }
                 .take(40)
                 .reversed() // älteste zuerst, damit neuere Mails die höheren Nummern bekommen
 
             for (key in keys) {
                 val raw = reader.fetch(key)
-                known += key
+                checked += key
                 if (raw == null) continue
-                checked++
+                checkedCount++
                 if (!mentionsBahn(raw)) continue
                 bahnMails++
                 val mail = MimeParser.parse(raw)
                 if (mail.pdfs.isEmpty()) {
                     withoutPdf++
+                    continue
+                }
+                deleted -= key
+                if (tickets.any { it.key == key }) continue
+                // Ticket aus einer älteren Version (noch ohne Kennung)? Dann nur die Kennung nachtragen.
+                val legacy = tickets.indexOfFirst { it.key == null && it.subject == mail.subject.ifBlank { "Fahrkarte" } && it.date == mail.date }
+                if (legacy >= 0) {
+                    tickets[legacy] = tickets[legacy].copy(key = key)
                     continue
                 }
                 val id = nextId++
@@ -83,20 +141,56 @@ internal class TicketStore(filesDir: File) {
                     File(dir, name).writeBytes(bytes)
                     name
                 }
-                tickets += TicketEntry(
-                    uid = id,
-                    subject = mail.subject.ifBlank { "Fahrkarte" },
-                    date = mail.date,
-                    text = mail.text,
-                    files = files,
+                tickets += withInfo(
+                    TicketEntry(
+                        uid = id,
+                        subject = mail.subject.ifBlank { "Fahrkarte" },
+                        date = mail.date,
+                        text = mail.text,
+                        files = files,
+                        key = key,
+                    ),
                 )
                 added++
             }
             reader.quit()
         }
 
-        writeIndex(TicketIndex(tickets, known.toList()))
-        return RefreshResult(checked, bahnMails, withoutPdf, added)
+        writeIndex(TicketIndex(tickets, checked.toList(), deleted.toList()))
+        return RefreshResult(checkedCount, bahnMails, withoutPdf, added)
+    }
+
+    /**
+     * Liest bei Tickets aus älteren Versionen Datum und Bahnhöfe nach.
+     * @return true, wenn sich etwas geändert hat.
+     */
+    @Synchronized
+    fun fillMissingInfo(): Boolean {
+        val index = readIndex()
+        if (index.tickets.none { it.infoVersion < INFO_VERSION }) return false
+        val updated = index.tickets.map { if (it.infoVersion < INFO_VERSION) withInfo(it) else it }
+        writeIndex(index.copy(tickets = updated))
+        return true
+    }
+
+    private fun withInfo(entry: TicketEntry): TicketEntry {
+        val pdfText = entry.files.joinToString("\n\n") { name ->
+            runCatching { PdfText.extract(File(dir, name).readBytes()) }.getOrDefault("")
+        }
+        val booked = runCatching {
+            java.time.ZonedDateTime.parse(
+                entry.date.substringBefore(" ("),
+                java.time.format.DateTimeFormatter.RFC_1123_DATE_TIME,
+            ).toLocalDate()
+        }.getOrNull()
+        val info = runCatching { TicketInfoParser.parse(pdfText, entry.text, booked) }.getOrDefault(TicketInfo())
+        return entry.copy(
+            travelDate = info.date?.toString(),
+            departureTime = info.time,
+            fromStation = info.from,
+            toStation = info.to,
+            infoVersion = INFO_VERSION,
+        )
     }
 
     /** Prüft nur Verbindung und Anmeldung, ohne etwas zu laden. */
@@ -107,6 +201,7 @@ internal class TicketStore(filesDir: File) {
         }
     }
 
+    @Synchronized
     fun delete(entry: TicketEntry) {
         entry.files.forEach {
             File(dir, it).delete()
@@ -114,32 +209,16 @@ internal class TicketStore(filesDir: File) {
             File(dir, "$it.code2.png").delete()
         }
         val index = readIndex()
-        writeIndex(index.copy(tickets = index.tickets.filterNot { it.uid == entry.uid }))
+        writeIndex(
+            index.copy(
+                tickets = index.tickets.filterNot { it.uid == entry.uid },
+                deletedKeys = (index.deletedKeys + listOfNotNull(entry.key)).distinct(),
+            ),
+        )
     }
 
     fun deleteAll() {
         dir.listFiles()?.forEach { it.delete() }
-    }
-
-    /**
-     * Sucht Fahrkarten, deren Mail beide Orte der Verbindung erwähnt.
-     * Einfache Heuristik: verglichen wird der Ortsname ohne Zusätze wie "Hbf".
-     */
-    fun matching(fromName: String?, toName: String?): List<TicketEntry> {
-        val from = placeKey(fromName) ?: return emptyList()
-        val to = placeKey(toName) ?: return emptyList()
-        return tickets().filter { entry ->
-            val haystack = (entry.subject + " " + entry.text).lowercase(Locale.GERMAN)
-            from in haystack && to in haystack
-        }
-    }
-
-    private fun placeKey(name: String?): String? {
-        if (name.isNullOrBlank()) return null
-        return name.lowercase(Locale.GERMAN)
-            .replace(Regex("\\(.*?\\)"), " ")
-            .split(Regex("[\\s,/-]+"))
-            .firstOrNull { it.length >= 3 && it !in setOf("bahnhof", "hbf", "s+u", "u+s") }
     }
 
     private fun readIndex(): TicketIndex =
