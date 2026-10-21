@@ -147,7 +147,7 @@ class BahnViewModel internal constructor(
         val (title, initial) = when (field) {
             Field.FROM -> "Von" to ""
             Field.TO -> "Nach" to ""
-            Field.TIME -> "Abfahrt (z. B. 17:30)" to ""
+            Field.TIME -> "Abfahrt: 17:30 · morgen 8:00 · leer = jetzt" to ""
             Field.EMAIL -> "Ticket-Mailadresse" to s.email
             Field.PASSWORD -> "App-Passwort" to ""
             Field.SERVER -> "Server (leer = automatisch)" to s.mail.host

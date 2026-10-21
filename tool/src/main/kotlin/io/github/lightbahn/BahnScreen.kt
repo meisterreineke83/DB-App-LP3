@@ -2,6 +2,7 @@ package io.github.lightbahn
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -115,6 +116,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
         rightButton: LightTopBarButton? = null,
         message: String? = null,
         bottomItems: List<LightBarButton?> = emptyList(),
+        scroll: Boolean = true,
         content: @Composable ColumnScope.() -> Unit,
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -136,13 +138,15 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                         .lightClickable { viewModel.clearMessage() },
                 )
             }
-            LightScrollView(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 2f.gridUnitsAsDp()),
-                content = content,
-            )
+            val bodyModifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 2f.gridUnitsAsDp())
+            if (scroll) {
+                LightScrollView(modifier = bodyModifier, content = content)
+            } else {
+                Column(modifier = bodyModifier, content = content)
+            }
             if (bottomItems.isNotEmpty()) {
                 LightBottomBar(items = bottomItems)
             }
@@ -176,7 +180,6 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
             variant = LightTextVariant.Subheading,
             lighten = !enabled,
             modifier = modifier
-                .fillMaxWidth()
                 .lightClickable(enabled = enabled, onClick = onClick)
                 .padding(vertical = 1f.gridUnitsAsDp()),
         )
@@ -203,6 +206,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
             showBack = false,
             rightButton = LightBarButton.LightIcon(LightIcons.SETTINGS, onClick = viewModel::openSettings),
             message = state.message,
+            scroll = false,
         ) {
             LightTextField(
                 label = "Von",
@@ -215,35 +219,28 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                 value = state.to?.name.orEmpty(),
                 placeholder = "Ziel wählen",
                 onClick = { viewModel.edit(Field.TO) },
-                modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
-            )
-            ActionLink(
-                text = "Suchen",
-                enabled = state.from != null && state.to != null,
-                onClick = viewModel::search,
-                modifier = Modifier.padding(top = 3f.gridUnitsAsDp()),
-            )
-            ActionLink(
-                text = "Tickets",
-                onClick = viewModel::openTickets,
-                modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
+                modifier = Modifier.padding(top = 1.5f.gridUnitsAsDp()),
             )
             LightTextField(
                 label = "Abfahrt",
                 value = describeDeparture(state.departure),
                 placeholder = "Jetzt",
                 onClick = { viewModel.edit(Field.TIME) },
-                modifier = Modifier.padding(top = 4f.gridUnitsAsDp()),
+                modifier = Modifier.padding(top = 1.5f.gridUnitsAsDp()),
             )
-            if (state.departure != null) {
-                LightText(
-                    text = "Auf jetzt zurücksetzen",
-                    variant = LightTextVariant.Detail,
-                    underline = true,
-                    modifier = Modifier
-                        .padding(top = 1f.gridUnitsAsDp())
-                        .lightClickable { viewModel.resetDeparture() },
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.5f.gridUnitsAsDp()),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ActionLink(
+                    text = "Suchen",
+                    enabled = state.from != null && state.to != null,
+                    onClick = viewModel::search,
                 )
+                ActionLink(text = "Tickets", onClick = viewModel::openTickets)
             }
         }
     }

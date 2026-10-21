@@ -1,8 +1,8 @@
 [tool]
 id = "io.github.lightbahn"
 label = "Bahn"
-versionCode = 5
-versionName = "0.4.1"
+versionCode = 6
+versionName = "0.4.2"
 permissions = ["android.permission.INTERNET"]
 capabilities = []
 # for the LightOS emulator, use the line below and build with -DlightSdk.allowAltServerPackage=true
