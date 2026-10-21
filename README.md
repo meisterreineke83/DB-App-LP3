@@ -83,7 +83,7 @@ Lokal geht es auch mit Android Studio oder:
 3. Unter `Developer` → `Developer Keys` die Datei
    [`docs/sideloading/light_debug_signing_key.txt`](docs/sideloading/light_debug_signing_key.txt)
    hochladen. (Das ist der Fingerabdruck des SDK-Entwicklerschlüssels, mit dem die APK signiert ist.)
-4. Unter `Upload Tools` die `FOX-Gleis-Light.apk` hochladen. Nach kurzer Zeit erscheint „FOX Gleis Light“ in der Toolbox.
+4. Unter `Upload Tools` die `FOX-Gleis-Light.apk` hochladen. Nach kurzer Zeit erscheint „Gleis“ in der Toolbox.
 
 Siehe auch die offizielle Anleitung in [`docs/sideloading`](docs/sideloading/README.md).
 
