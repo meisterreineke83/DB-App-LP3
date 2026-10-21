@@ -5,8 +5,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          note() { echo "::notice title=$1::$(echo "$2" | head -c 1200 | tr '\n' ' ')"; }
+          note() { echo "::notice title=$1::$(echo "$2" | head -c 3500 | tr '\n' ' ')"; }
           UA="LightBahn/0.1 (Light Phone III community tool)"
-          note "dbrest" "$(curl -sS -m 30 -w ' HTTP=%{http_code}' -A "$UA" 'https://v6.db.transport.rest/locations?query=Hamburg&results=2' 2>&1)"
-          note "transitous-geocode" "$(curl -sS -m 30 -w ' HTTP=%{http_code}' -A "$UA" 'https://api.transitous.org/api/v1/geocode?text=Hamburg%20Hbf&language=de' 2>&1)"
-          note "bahnde-orte" "$(curl -sS -m 30 -w ' HTTP=%{http_code}' -A "$UA" 'https://int.bahn.de/web/api/reiseloesung/orte?suchbegriff=Hamburg%20Hbf&typ=ALL&limit=3' 2>&1)"
+          FROM=$(curl -sS -A "$UA" 'https://api.transitous.org/api/v1/geocode?text=Hamburg%20Hbf&language=de' | jq -r '[.[]|select(.type=="STOP")][0].id')
+          TO=$(curl -sS -A "$UA" 'https://api.transitous.org/api/v1/geocode?text=Berlin%20Hbf&language=de' | jq -r '[.[]|select(.type=="STOP")][0].id')
+          note "ids" "$FROM | $TO"
+          curl -sS -G -A "$UA" 'https://api.transitous.org/api/v5/plan' --data-urlencode "fromPlace=$FROM" --data-urlencode "toPlace=$TO" \
+            --data-urlencode "language=de" --data-urlencode "numItineraries=3" -o plan.json -w '%{http_code}' > code.txt
+          note "http" "$(cat code.txt) keys=$(jq -c 'keys' plan.json)"
+          note "itin0" "$(jq -c '.itineraries[0] | del(.legs) ' plan.json)"
+          note "leg-rail" "$(jq -c '[.itineraries[0].legs[] | select(.mode != "WALK")][0] | del(.legGeometry, .intermediateStops, .steps)' plan.json)"
+          note "leg-walk" "$(jq -c '[.itineraries[0].legs[] | select(.mode == "WALK")][0] | del(.legGeometry, .steps)' plan.json)"
+          note "cursor" "$(jq -c '{nextPageCursor, previousPageCursor, n: (.itineraries|length)}' plan.json)"
+          note "geocode-sample" "$(curl -sS -A "$UA" 'https://api.transitous.org/api/v1/geocode?text=Erfurt&language=de&type=STOP' | jq -c '[.[] | {type,name,id,areas: [.areas[]|select(.default)|.name]}][0:4]')"
