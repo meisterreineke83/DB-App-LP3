@@ -41,7 +41,8 @@ jobs:
         with:
           tag_name: neueste
           name: Bahn (neuester Build)
-          prerelease: true
+          prerelease: false
+          make_latest: true
           files: Bahn.apk
           body: |
             Automatisch gebaut aus ${{ github.sha }}.
