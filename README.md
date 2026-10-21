@@ -59,7 +59,7 @@ automatisch nach neuen Fahrkarten (höchstens alle 10 Minuten).
 2. Neues Repository erstellen (z. B. `bahn-light`), dann den Inhalt dieses Ordners hochladen
    („Add file → Upload files“, alles hineinziehen, „Commit“).
 3. Unter **Actions** startet automatisch „Bahn-APK bauen“ (dauert ca. 5–8 Minuten).
-4. Danach liegt unter **Releases → „Bahn (neuester Build)“** die Datei `Bahn.apk`.
+4. Danach liegt unter **Releases → die neueste Version (z. B. „Bahn 0.3.0“)** die Datei `Bahn.apk`.
 
 Lokal geht es auch mit Android Studio oder:
 

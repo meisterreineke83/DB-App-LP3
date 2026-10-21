@@ -25,6 +25,10 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Version lesen
+        id: v
+        run: echo "version=$(grep '^versionName' tool/lighttool.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
       - name: APK bauen
         run: |
           chmod +x gradlew
@@ -36,11 +40,11 @@ jobs:
           name: Bahn-APK
           path: Bahn.apk
 
-      - name: Als Release "neueste" veröffentlichen
+      - name: Als Release veröffentlichen
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: neueste
-          name: Bahn (neuester Build)
+          tag_name: v${{ steps.v.outputs.version }}
+          name: Bahn ${{ steps.v.outputs.version }}
           prerelease: false
           make_latest: true
           files: Bahn.apk
