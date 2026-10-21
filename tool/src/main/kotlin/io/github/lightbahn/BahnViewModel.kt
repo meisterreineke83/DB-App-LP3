@@ -109,6 +109,12 @@ class BahnViewModel internal constructor(
                     tickets = tickets,
                 )
             }
+            // Tickets aus älteren Versionen: Datum und Bahnhöfe einmalig aus dem PDF nachlesen.
+            val changed = withContext(Dispatchers.Default) { runCatching { ticketStore.fillMissingInfo() }.getOrDefault(false) }
+            if (changed) {
+                val refreshed = withContext(Dispatchers.IO) { ticketStore.tickets() }
+                _state.update { it.copy(tickets = refreshed) }
+            }
         }
     }
 
@@ -320,14 +326,6 @@ class BahnViewModel internal constructor(
 
     fun openJourney(journey: Journey) = push(Mode.Detail(journey))
 
-    /** Fahrkarte zur aktuellen Verbindung: passt genau eine, wird sie direkt geöffnet. */
-    fun openTicketFor(journey: Journey) {
-        val from = journey.legs.firstOrNull()?.origin?.name ?: _state.value.from?.name
-        val to = journey.legs.lastOrNull()?.destination?.name ?: _state.value.to?.name
-        val matches = ticketStore.matching(from, to)
-        if (matches.size == 1) openTicket(matches.first()) else push(Mode.Tickets(matches.map { it.uid }))
-    }
-
     // ---------- Fahrkarten ----------
 
     /** Öffnet die Ticket-Liste und schaut dabei nach neuen Mails (höchstens alle 10 Minuten). */
@@ -335,10 +333,13 @@ class BahnViewModel internal constructor(
         push(Mode.Tickets())
         val s = _state.value
         val due = System.currentTimeMillis() - lastTicketRefresh > 10 * 60_000
-        if (s.email.isNotBlank() && s.hasPassword && due) refreshTickets()
+        if (s.email.isNotBlank() && s.hasPassword && due) refreshTickets(restoreDeleted = false)
     }
 
-    fun refreshTickets() {
+    /** Knopf oben rechts: holt neue Mails und bringt auf dem Telefon gelöschte Tickets zurück. */
+    fun syncTickets() = refreshTickets(restoreDeleted = true)
+
+    private fun refreshTickets(restoreDeleted: Boolean) {
         viewModelScope.launch {
             val prefs = dataStore.data.first()
             val mail = prefs.mailSettings()
@@ -351,17 +352,17 @@ class BahnViewModel internal constructor(
             _state.update { it.copy(busy = "Hole Fahrkarten aus dem Postfach …") }
             lastTicketRefresh = System.currentTimeMillis()
             try {
-                val r = withContext(Dispatchers.IO) { ticketStore.refresh(mail, password) }
+                val r = withContext(Dispatchers.IO) { ticketStore.refresh(mail, password, restoreDeleted) }
                 val tickets = withContext(Dispatchers.IO) { ticketStore.tickets() }
                 val message = when {
-                    r.added == 1 -> "1 neue Fahrkarte."
-                    r.added > 1 -> "${r.added} neue Fahrkarten."
+                    r.added == 1 -> "1 Fahrkarte geladen."
+                    r.added > 1 -> "${r.added} Fahrkarten geladen."
                     r.checked == 0 -> "Keine neuen Mails von der Bahn im Postfach " +
                         "(gesucht: ${BAHN_DOMAINS.joinToString(", ")})."
                     r.withoutPdf > 0 -> "${r.withoutPdf} Bahn-Mail(s) gefunden, aber ohne PDF-Anhang – " +
                         "darin steckt keine Fahrkarte als Datei."
                     r.bahnMails == 0 -> "${r.checked} Mail(s) geprüft, keine davon von der Bahn."
-                    else -> "Keine neuen Fahrkarten."
+                    else -> "Alle Fahrkarten sind aktuell."
                 }
                 _state.update { it.copy(busy = null, tickets = tickets, message = message) }
             } catch (e: Exception) {
