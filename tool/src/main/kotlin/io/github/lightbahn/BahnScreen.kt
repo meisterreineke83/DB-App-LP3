@@ -16,6 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -420,6 +423,8 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
     @Composable
     private fun TicketViewContent(mode: Mode.TicketView, rendered: RenderedTicket?) {
         val entry = mode.entry
+        // Nur der Barcode, so groß wie möglich. Ein Tipp darauf blendet Details und Knöpfe ein.
+        var showDetails by remember(entry.uid, mode.fileIndex) { mutableStateOf(rendered?.code == null) }
         val bottom = buildList<LightBarButton?> {
             if (entry.files.size > 1) {
                 add(LightBarButton.Text("WEITER", onClick = {
@@ -439,7 +444,8 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(Color.White),
+                    .background(Color.White)
+                    .lightClickable { showDetails = !showDetails },
                 contentAlignment = Alignment.Center,
             ) {
                 when {
@@ -450,8 +456,8 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                         contentScale = ContentScale.Fit,
                         filterQuality = FilterQuality.None,
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(1f.gridUnitsAsDp()),
+                            .fillMaxSize()
+                            .padding(0.5f.gridUnitsAsDp()),
                     )
                     else -> LightScrollView(modifier = Modifier.fillMaxSize()) {
                         Image(
@@ -463,22 +469,24 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                     }
                 }
             }
-            LightText(
-                text = entry.subject,
-                variant = LightTextVariant.Detail,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp(), vertical = 1f.gridUnitsAsDp()),
-            )
-            if (rendered != null && rendered.code == null) {
+            if (showDetails) {
                 LightText(
-                    text = "Barcode nicht automatisch gefunden – ganze Seite wird angezeigt.",
-                    variant = LightTextVariant.Fine,
-                    lighten = true,
-                    modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
+                    text = entry.subject,
+                    variant = LightTextVariant.Detail,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp(), vertical = 1f.gridUnitsAsDp()),
                 )
+                if (rendered != null && rendered.code == null) {
+                    LightText(
+                        text = "Barcode nicht automatisch gefunden – ganze Seite wird angezeigt.",
+                        variant = LightTextVariant.Fine,
+                        lighten = true,
+                        modifier = Modifier.padding(horizontal = 2f.gridUnitsAsDp()),
+                    )
+                }
+                LightBottomBar(items = bottom)
             }
-            LightBottomBar(items = bottom)
         }
     }
 

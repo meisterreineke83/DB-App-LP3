@@ -111,6 +111,7 @@ internal class TicketStore(filesDir: File) {
         entry.files.forEach {
             File(dir, it).delete()
             File(dir, "$it.code.png").delete()
+            File(dir, "$it.code2.png").delete()
         }
         val index = readIndex()
         writeIndex(index.copy(tickets = index.tickets.filterNot { it.uid == entry.uid }))

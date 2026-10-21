@@ -37,7 +37,7 @@ internal object TicketRenderer {
     private const val RENDER_WIDTH_PX = 1700
 
     fun render(pdf: File): RenderedTicket {
-        val cache = File(pdf.path + ".code.png")
+        val cache = File(pdf.path + ".code2.png")
         ParcelFileDescriptor.open(pdf, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
             PdfRenderer(fd).use { renderer ->
                 var firstPage: Bitmap? = null
@@ -82,10 +82,12 @@ internal object TicketRenderer {
         val maxX = points.maxOf { it.x }
         val minY = points.minOf { it.y }
         val maxY = points.maxOf { it.y }
-        // Bei QR-Codes liegen die Punkte in den Suchmustern, nicht an der Kante → großzügiger Rand.
-        val marginFactor = if (result.barcodeFormat == BarcodeFormat.AZTEC) 0.12f else 0.25f
+        // Aztec: Die Punkte sind die Ecken des Codes → nur ein schmaler weißer Rand, damit
+        // Rahmen und Begleittext aus dem PDF nicht mit aufs Bild kommen.
+        // QR: Die Punkte liegen in den Suchmustern, nicht an der Kante → etwas mehr Rand.
+        val marginFactor = if (result.barcodeFormat == BarcodeFormat.AZTEC) 0.04f else 0.15f
         val size = max(maxX - minX, maxY - minY)
-        val margin = size * marginFactor + 8f
+        val margin = size * marginFactor + 4f
 
         val left = (minX - margin).toInt().coerceIn(0, w - 1)
         val top = (minY - margin).toInt().coerceIn(0, h - 1)
