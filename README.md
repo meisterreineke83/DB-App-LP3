@@ -1,7 +1,7 @@
-# DB-App-LP3
+# FOX Gleis Light
 Ich versuche mithilfe von Claude eine Bahn App für Deutschland zu programmieren.
 
-## Bahn – ein ruhiges Bahn-Tool für das Light Phone III
+## Ein ruhiges Tool für Bahn, Bus und Tickets auf dem Light Phone III
 Verbindungen suchen und die Fahrkarte aus der Bahn-Mail anzeigen. Kein Konto bei der Bahn,
 keine Werbung, kein Tracking.
 
@@ -65,7 +65,7 @@ automatisch nach neuen Fahrkarten (höchstens alle 10 Minuten).
 2. Neues Repository erstellen (z. B. `bahn-light`), dann den Inhalt dieses Ordners hochladen
    („Add file → Upload files“, alles hineinziehen, „Commit“).
 3. Unter **Actions** startet automatisch „Bahn-APK bauen“ (dauert ca. 5–8 Minuten).
-4. Danach liegt unter **Releases → die neueste Version (z. B. „Bahn 0.3.0“)** die Datei `Bahn.apk`.
+4. Danach liegt unter **Releases → die neueste Version (z. B. „FOX Gleis Light 0.6.0“)** die Datei `FOX-Gleis-Light.apk`.
 
 Lokal geht es auch mit Android Studio oder:
 
@@ -83,14 +83,14 @@ Lokal geht es auch mit Android Studio oder:
 3. Unter `Developer` → `Developer Keys` die Datei
    [`docs/sideloading/light_debug_signing_key.txt`](docs/sideloading/light_debug_signing_key.txt)
    hochladen. (Das ist der Fingerabdruck des SDK-Entwicklerschlüssels, mit dem die APK signiert ist.)
-4. Unter `Upload Tools` die `Bahn.apk` hochladen. Nach kurzer Zeit erscheint „Bahn“ in der Toolbox.
+4. Unter `Upload Tools` die `FOX-Gleis-Light.apk` hochladen. Nach kurzer Zeit erscheint „FOX Gleis Light“ in der Toolbox.
 
 Siehe auch die offizielle Anleitung in [`docs/sideloading`](docs/sideloading/README.md).
 
 **Variante B – per Kabel mit adb**
 
 1. Entwickleroptionen und USB-Debugging am Light Phone aktivieren.
-2. Android platform-tools (adb) am Computer installieren, dann: `adb install Bahn.apk`
+2. Android platform-tools (adb) am Computer installieren, dann: `adb install FOX-Gleis-Light.apk`
 
 ## Aufbau
 

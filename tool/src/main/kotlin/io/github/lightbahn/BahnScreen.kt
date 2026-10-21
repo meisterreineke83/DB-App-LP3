@@ -206,7 +206,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
     @Composable
     private fun HomeContent(state: BahnUiState) {
         Page(
-            title = "Bahn",
+            title = "Gleis",
             showBack = false,
             rightButton = LightBarButton.LightIcon(LightIcons.SETTINGS, onClick = viewModel::openSettings),
             message = state.message,

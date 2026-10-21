@@ -1,4 +1,4 @@
-name: Bahn-APK bauen
+name: APK bauen
 
 on:
   push:
@@ -33,21 +33,21 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :tool:assembleDebug -DlightSdk.toolOnly=true --stacktrace
-          cp tool/build/outputs/apk/debug/*.apk Bahn.apk
+          cp tool/build/outputs/apk/debug/*.apk FOX-Gleis-Light.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Bahn-APK
-          path: Bahn.apk
+          name: FOX-Gleis-Light-APK
+          path: FOX-Gleis-Light.apk
 
       - name: Als Release veröffentlichen
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.v.outputs.version }}
-          name: Bahn ${{ steps.v.outputs.version }}
+          name: FOX Gleis Light ${{ steps.v.outputs.version }}
           prerelease: false
           make_latest: true
-          files: Bahn.apk
+          files: FOX-Gleis-Light.apk
           body: |
             Automatisch gebaut aus ${{ github.sha }}.
             Installation: siehe README → „Aufs Light Phone bringen“.

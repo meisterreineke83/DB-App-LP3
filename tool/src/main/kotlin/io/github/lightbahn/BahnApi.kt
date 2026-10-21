@@ -29,7 +29,7 @@ import kotlin.math.roundToInt
  * damit der Rest des Tools nicht von der Schnittstelle abhängt.
  */
 private const val API_BASE = "https://api.transitous.org"
-private const val USER_AGENT = "LightBahn/0.1 (Light Phone III community tool; github.com/meisterreineke83/DB-App-LP3)"
+private const val USER_AGENT = "FOX-Gleis-Light/0.6 (Light Phone III community tool; github.com/meisterreineke83/FOX-Gleis-Light)"
 
 // ---------------------------------------------------------------- Daten fürs Tool
 
