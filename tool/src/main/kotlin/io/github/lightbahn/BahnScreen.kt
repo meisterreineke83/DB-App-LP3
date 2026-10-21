@@ -33,6 +33,7 @@ import com.thelightphone.sdk.SealedLightActivity
 import com.thelightphone.sdk.rememberKeyboardOptions
 import com.thelightphone.sdk.ui.LightBarButton
 import com.thelightphone.sdk.ui.LightBottomBar
+import com.thelightphone.sdk.ui.LightIcon
 import com.thelightphone.sdk.ui.LightIcons
 import com.thelightphone.sdk.ui.LightScrollView
 import com.thelightphone.sdk.ui.LightText
@@ -101,6 +102,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                     mode is Mode.Home -> HomeContent(state)
                     mode is Mode.PickStation -> PickStationContent(mode)
                     mode is Mode.PickDay -> PickDayContent()
+                    mode is Mode.ConfirmDelete -> ConfirmDeleteContent(mode.entry)
                     mode is Mode.Results -> ResultsContent(state)
                     mode is Mode.Detail -> DetailContent(mode.journey, state.message)
                     mode is Mode.Tickets -> TicketsContent(state, mode)
@@ -413,11 +415,59 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
 
     @Composable
     private fun TicketRow(entry: TicketEntry) {
-        Row2(
-            top = entry.subject,
-            bottom = mailDate(entry.date) + if (entry.files.size > 1) " · ${entry.files.size} PDFs" else "",
-            onClick = { viewModel.openTicket(entry) },
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                Row2(
+                    top = entry.subject,
+                    bottom = mailDate(entry.date) + if (entry.files.size > 1) " · ${entry.files.size} PDFs" else "",
+                    onClick = { viewModel.openTicket(entry) },
+                )
+            }
+            LightIcon(
+                icon = LightIcons.TRASH,
+                contentDescription = "Ticket löschen",
+                modifier = Modifier
+                    .lightClickable { viewModel.confirmDelete(entry) }
+                    .padding(start = 1.5f.gridUnitsAsDp(), top = 1f.gridUnitsAsDp(), bottom = 1f.gridUnitsAsDp()),
+            )
+        }
+    }
+
+    @Composable
+    private fun ConfirmDeleteContent(entry: TicketEntry) {
+        Page(title = "Löschen?", scroll = false) {
+            LightText(
+                text = entry.subject,
+                variant = LightTextVariant.Copy,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
+            LightText(
+                text = mailDate(entry.date),
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                modifier = Modifier.padding(top = 1f.gridUnitsAsDp()),
+            )
+            LightText(
+                text = "Das Ticket wird nur vom Telefon gelöscht. Die Mail bleibt im Postfach.",
+                variant = LightTextVariant.Detail,
+                lighten = true,
+                modifier = Modifier.padding(top = 2f.gridUnitsAsDp()),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 3f.gridUnitsAsDp()),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                ActionLink(text = "Abbrechen", onClick = viewModel::back)
+                ActionLink(text = "Löschen", onClick = { viewModel.deleteTicket(entry) })
+            }
+        }
     }
 
     @Composable
@@ -432,7 +482,7 @@ class BahnScreen(sealedActivity: SealedLightActivity) :
                     viewModel.openTicket(entry, (mode.fileIndex + 1) % entry.files.size)
                 }))
             }
-            add(LightBarButton.Text("LÖSCHEN", onClick = { viewModel.deleteTicket(entry) }))
+            add(LightBarButton.Text("LÖSCHEN", onClick = { viewModel.confirmDelete(entry) }))
         }
         Column(modifier = Modifier.fillMaxSize()) {
             LightTopBar(

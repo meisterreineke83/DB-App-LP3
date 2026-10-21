@@ -29,6 +29,7 @@ sealed interface Mode {
     data class TicketView(val entry: TicketEntry, val fileIndex: Int) : Mode
     data object Settings : Mode
     data object PickDay : Mode
+    data class ConfirmDelete(val entry: TicketEntry) : Mode
 }
 
 data class BahnUiState(
@@ -384,6 +385,9 @@ class BahnViewModel internal constructor(
         }
     }
 
+    /** Fragt erst nach, bevor ein Ticket gelöscht wird. */
+    fun confirmDelete(entry: TicketEntry) = push(Mode.ConfirmDelete(entry))
+
     fun deleteTicket(entry: TicketEntry) {
         viewModelScope.launch {
             val tickets = withContext(Dispatchers.IO) {
@@ -391,8 +395,13 @@ class BahnViewModel internal constructor(
                 ticketStore.tickets()
             }
             rendered.value = null
-            _state.update { it.copy(tickets = tickets) }
-            pop()
+            // Rückfrage und ggf. die geöffnete Ticket-Ansicht schließen → zurück zur Liste.
+            _state.update { s ->
+                val stack = s.stack.filterNot {
+                    it is Mode.ConfirmDelete || (it is Mode.TicketView && it.entry.uid == entry.uid)
+                }
+                s.copy(tickets = tickets, stack = stack, message = "Ticket gelöscht.")
+            }
         }
     }
 
